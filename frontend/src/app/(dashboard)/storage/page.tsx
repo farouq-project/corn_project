@@ -17,19 +17,21 @@ import { getApiErrorMessage } from "@/lib/axios";
 import { formatDate, formatWeight, cn } from "@/lib/utils";
 import api from "@/lib/axios";
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const inventorySchema = z.object({
-  genotype_id: z.coerce.number().min(1, "Pilih genotipe"),
-  storage_unit_id: z.coerce.number().min(1, "Pilih unit penyimpanan"),
+  genotype_id: z.preprocess(Number, z.number().min(1, "Pilih genotipe")),
+  storage_unit_id: z.preprocess(Number, z.number().min(1, "Pilih unit penyimpanan")),
   rack_label: z.string().optional(),
   box_number: z.string().optional(),
   storage_date: z.string().min(1, "Tanggal penyimpanan wajib diisi"),
   harvest_date: z.string().optional(),
   expiry_date: z.string().optional(),
-  initial_weight_g: z.coerce.number().min(0.01, "Berat awal wajib diisi"),
-  remaining_weight_g: z.coerce.number().min(0),
-  moisture_content: z.coerce.number().min(0).max(100).optional(),
-  germination_percentage: z.coerce.number().min(0).max(100).optional(),
-  seed_count: z.coerce.number().optional(),
+  initial_weight_g: z.preprocess(Number, z.number().min(0.01, "Berat awal wajib diisi")),
+  remaining_weight_g: z.preprocess(Number, z.number().min(0)),
+  moisture_content: z.preprocess(toOptionalNumber, z.number().min(0).max(100).optional()),
+  germination_percentage: z.preprocess(toOptionalNumber, z.number().min(0).max(100).optional()),
+  seed_count: z.preprocess(toOptionalNumber, z.number().optional()),
   notes: z.string().optional(),
 });
 
@@ -37,19 +39,19 @@ const unitSchema = z.object({
   unit_name: z.string().min(1, "Nama unit wajib diisi"),
   unit_type: z.string().min(1, "Tipe unit wajib dipilih"),
   room_name: z.string().optional(),
-  temperature_min: z.coerce.number().optional(),
-  temperature_max: z.coerce.number().optional(),
-  humidity_min: z.coerce.number().optional(),
-  humidity_max: z.coerce.number().optional(),
-  capacity_racks: z.coerce.number().optional(),
-  capacity_boxes_per_rack: z.coerce.number().optional(),
+  temperature_min: z.preprocess(toOptionalNumber, z.number().optional()),
+  temperature_max: z.preprocess(toOptionalNumber, z.number().optional()),
+  humidity_min: z.preprocess(toOptionalNumber, z.number().optional()),
+  humidity_max: z.preprocess(toOptionalNumber, z.number().optional()),
+  capacity_racks: z.preprocess(toOptionalNumber, z.number().optional()),
+  capacity_boxes_per_rack: z.preprocess(toOptionalNumber, z.number().optional()),
 });
 
 type UnitForm = z.infer<typeof unitSchema>;
 
 const movementSchema = z.object({
   movement_type: z.enum(["out_planting", "out_laboratory", "out_distribution", "out_discard", "in_return", "adjustment"]),
-  quantity_g: z.coerce.number().min(0.01, "Jumlah wajib diisi"),
+  quantity_g: z.preprocess(Number, z.number().min(0.01, "Jumlah wajib diisi")),
   movement_date: z.string().min(1, "Tanggal wajib diisi"),
   destination: z.string().optional(),
   recipient_name: z.string().optional(),

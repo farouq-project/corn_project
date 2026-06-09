@@ -14,10 +14,12 @@ import type { FieldActivity } from "@/types";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formatDate, formatDateTime, cn } from "@/lib/utils";
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const schema = z.object({
-  trial_id: z.coerce.number().optional(),
-  location_id: z.coerce.number().optional(),
-  genotype_id: z.coerce.number().optional(),
+  trial_id: z.preprocess(toOptionalNumber, z.number().optional()),
+  location_id: z.preprocess(toOptionalNumber, z.number().optional()),
+  genotype_id: z.preprocess(toOptionalNumber, z.number().optional()),
   activity_type: z.string().min(1, "Jenis kegiatan wajib dipilih"),
   activity_title: z.string().min(1, "Judul wajib diisi"),
   description: z.string().optional(),

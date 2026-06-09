@@ -16,13 +16,15 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { getApiErrorMessage } from "@/lib/axios";
 import { formatDate, formatCurrency, cn } from "@/lib/utils";
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const expenseSchema = z.object({
-  category_id: z.coerce.number().min(1, "Pilih kategori"),
-  budget_id: z.coerce.number().optional(),
-  trial_id: z.coerce.number().optional(),
+  category_id: z.preprocess(Number, z.number().min(1, "Pilih kategori")),
+  budget_id: z.preprocess(toOptionalNumber, z.number().optional()),
+  trial_id: z.preprocess(toOptionalNumber, z.number().optional()),
   title: z.string().min(1, "Judul wajib diisi"),
   description: z.string().optional(),
-  amount: z.coerce.number().min(1, "Jumlah wajib diisi"),
+  amount: z.preprocess(Number, z.number().min(1, "Jumlah wajib diisi")),
   payment_date: z.string().min(1, "Tanggal wajib diisi"),
   vendor: z.string().optional(),
   payment_method: z.string().optional(),
@@ -32,7 +34,7 @@ const expenseSchema = z.object({
 const budgetSchema = z.object({
   budget_name: z.string().min(1, "Nama anggaran wajib diisi"),
   funding_source: z.string().optional(),
-  total_amount: z.coerce.number().min(1, "Jumlah anggaran wajib diisi"),
+  total_amount: z.preprocess(Number, z.number().min(1, "Jumlah anggaran wajib diisi")),
   start_date: z.string().min(1, "Tanggal mulai wajib diisi"),
   end_date: z.string().min(1, "Tanggal berakhir wajib diisi"),
 });

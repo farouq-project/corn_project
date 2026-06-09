@@ -17,15 +17,17 @@ import { getApiErrorMessage } from "@/lib/axios";
 import { formatDate, cn } from "@/lib/utils";
 import api from "@/lib/axios";
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const schema = z.object({
   trial_code: z.string().min(1, "Kode trial wajib diisi").max(30),
   trial_name: z.string().min(1, "Nama trial wajib diisi"),
-  season_id: z.coerce.number().min(1, "Pilih musim"),
-  location_id: z.coerce.number().min(1, "Pilih lokasi"),
+  season_id: z.preprocess(Number, z.number().min(1, "Pilih musim")),
+  location_id: z.preprocess(Number, z.number().min(1, "Pilih lokasi")),
   objective: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
-  replications: z.coerce.number().min(1).max(20).default(3),
-  plot_size_m2: z.coerce.number().optional(),
+  replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
+  plot_size_m2: z.preprocess(toOptionalNumber, z.number().optional()),
   planting_date: z.string().optional(),
   harvest_date: z.string().optional(),
   status: z.enum(["planned", "active", "harvested", "completed", "cancelled"]).default("planned"),

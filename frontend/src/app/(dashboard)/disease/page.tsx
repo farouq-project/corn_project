@@ -30,11 +30,13 @@ const RESISTANCE_FULL: Record<string, string> = {
   rentan: "Rentan", sangat_rentan: "Sangat Rentan",
 };
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const evalSchema = z.object({
-  trial_id: z.coerce.number(),
-  environment_id: z.coerce.number(),
-  disease_type_id: z.coerce.number(),
-  days_after_planting: z.coerce.number().optional(),
+  trial_id: z.preprocess(Number, z.number()),
+  environment_id: z.preprocess(Number, z.number()),
+  disease_type_id: z.preprocess(Number, z.number()),
+  days_after_planting: z.preprocess(toOptionalNumber, z.number().optional()),
   evaluation_date: z.string(),
   growth_stage: z.string().optional(),
   weather_notes: z.string().optional(),

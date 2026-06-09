@@ -18,6 +18,8 @@ import type { Genotype } from "@/types";
 import type { ColumnDef } from "@tanstack/react-table";
 
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const schema = z.object({
   genotype_code: z.string().min(1, "Kode genotipe wajib diisi").max(30),
   old_code: z.string().optional(),
@@ -26,7 +28,7 @@ const schema = z.object({
   trial_type: z.enum(["drought", "shade", "normal", "feed", "sweet_corn", "multi"]),
   origin: z.string().optional(),
   breeder: z.string().optional(),
-  release_year: z.coerce.number().optional(),
+  release_year: z.preprocess(toOptionalNumber, z.number().optional()),
   breeder_notes: z.string().optional(),
   pedigree: z.string().optional(),
   status: z.enum(["active", "inactive", "archived"]).default("active"),

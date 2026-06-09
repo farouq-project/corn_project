@@ -27,13 +27,15 @@ const seasonSchema = z.object({
   description: z.string().optional(),
 });
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const locationSchema = z.object({
   field_code: z.string().min(1),
   field_name: z.string().min(1),
-  latitude: z.coerce.number().optional(),
-  longitude: z.coerce.number().optional(),
-  altitude: z.coerce.number().optional(),
-  area_hectares: z.coerce.number().optional(),
+  latitude: z.preprocess(toOptionalNumber, z.number().optional()),
+  longitude: z.preprocess(toOptionalNumber, z.number().optional()),
+  altitude: z.preprocess(toOptionalNumber, z.number().optional()),
+  area_hectares: z.preprocess(toOptionalNumber, z.number().optional()),
   village: z.string().optional(),
   district: z.string().optional(),
   regency: z.string().optional(),
@@ -47,12 +49,12 @@ const storageUnitSchema = z.object({
   unit_type: z.enum(["refrigerator", "freezer", "cold_room", "dry_room", "cabinet", "shelf"]),
   room_name: z.string().optional(),
   building: z.string().optional(),
-  temperature_min: z.coerce.number().optional(),
-  temperature_max: z.coerce.number().optional(),
-  humidity_min: z.coerce.number().optional(),
-  humidity_max: z.coerce.number().optional(),
-  capacity_racks: z.coerce.number().optional(),
-  capacity_boxes_per_rack: z.coerce.number().optional(),
+  temperature_min: z.preprocess(toOptionalNumber, z.number().optional()),
+  temperature_max: z.preprocess(toOptionalNumber, z.number().optional()),
+  humidity_min: z.preprocess(toOptionalNumber, z.number().optional()),
+  humidity_max: z.preprocess(toOptionalNumber, z.number().optional()),
+  capacity_racks: z.preprocess(toOptionalNumber, z.number().optional()),
+  capacity_boxes_per_rack: z.preprocess(toOptionalNumber, z.number().optional()),
 });
 
 export default function MasterDataPage() {

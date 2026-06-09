@@ -59,12 +59,14 @@ interface PlotObs {
   values?: ObsValue[];
 }
 
+const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
 const obsSchema = z.object({
-  trial_id: z.coerce.number().min(1, "Pilih trial"),
-  genotype_id: z.coerce.number().min(1, "Pilih genotipe"),
-  season_id: z.coerce.number().min(1, "Pilih musim"),
-  replication: z.coerce.number().min(1).max(20).default(1),
-  plot_number: z.coerce.number().optional(),
+  trial_id: z.preprocess(Number, z.number().min(1, "Pilih trial")),
+  genotype_id: z.preprocess(Number, z.number().min(1, "Pilih genotipe")),
+  season_id: z.preprocess(Number, z.number().min(1, "Pilih musim")),
+  replication: z.preprocess(Number, z.number().min(1).max(20).default(1)),
+  plot_number: z.preprocess(toOptionalNumber, z.number().optional()),
   observation_date: z.string().min(1, "Tanggal wajib diisi"),
   growth_stage: z.string().optional(),
   general_notes: z.string().optional(),
