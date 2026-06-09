@@ -50,7 +50,13 @@ export default function VarietyCandidatesPage() {
   });
 
   const { register, handleSubmit, reset } = useForm({
-    defaultValues: { target_release_year: new Date().getFullYear() + 2 },
+    defaultValues: {
+      genotype_id: "",
+      proposed_variety_name: "",
+      evaluation_start_year: "",
+      target_release_year: new Date().getFullYear() + 2,
+      adaptation_zones: "",
+    },
   });
 
   const createMutation = useMutation({

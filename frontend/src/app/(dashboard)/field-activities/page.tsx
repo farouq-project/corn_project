@@ -283,8 +283,8 @@ export default function FieldActivitiesPage() {
                           <div className="bg-white rounded-lg p-3 border border-gray-100">
                             <p className="text-gray-400 font-medium mb-1">Kondisi Cuaca</p>
                             <p className="text-gray-700">
-                              {(activity.weather_conditions as Record<string, unknown>).condition as string ?? "—"}
-                              {(activity.weather_conditions as Record<string, unknown>).temperature && ` · ${(activity.weather_conditions as Record<string, unknown>).temperature}°C`}
+                              {activity.weather_conditions.condition ?? "—"}
+                              {activity.weather_conditions.temperature != null && ` · ${activity.weather_conditions.temperature}°C`}
                             </p>
                           </div>
                         )}

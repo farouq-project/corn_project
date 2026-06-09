@@ -20,6 +20,7 @@ export interface User {
   last_login_at?: string;
   roles: string[];
   permissions: string[];
+  pivot?: { role?: string; [key: string]: unknown };
 }
 
 export interface Environment {
@@ -79,6 +80,7 @@ export interface Genotype {
   pedigree?: string;
   status: "active" | "inactive" | "archived";
   total_seed_weight?: number;
+  pivot?: { is_check?: boolean; [key: string]: unknown };
 }
 
 export interface StorageUnit {
