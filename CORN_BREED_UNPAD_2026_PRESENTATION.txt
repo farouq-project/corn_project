@@ -1,0 +1,832 @@
+================================================================================
+        CORN BREED UNPAD 2026
+        Integrated Corn Breeding Research Management System
+        Sistem Manajemen Penelitian Pemuliaan Jagung Terintegrasi
+
+        Universitas Padjadjaran — Fakultas Pertanian
+        Platform Versi 1.0 | Tahun 2026
+================================================================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. GAMBARAN UMUM SISTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Corn Breed UNPAD 2026 adalah platform manajemen penelitian pemuliaan jagung
+berbasis web yang dirancang khusus untuk mendukung seluruh siklus penelitian
+jagung di lingkungan Universitas Padjadjaran.
+
+Sistem ini menggantikan alur kerja berbasis spreadsheet Excel yang selama ini
+digunakan, dan mengintegrasikan seluruh aspek penelitian ke dalam satu platform
+terpusat yang terstandarisasi, dapat diaudit, dan siap untuk analisis ilmiah.
+
+LATAR BELAKANG:
+  - Penelitian pemuliaan jagung UNPAD melibatkan banyak pihak dan lokasi
+  - Data penelitian tersebar di berbagai spreadsheet tanpa standarisasi
+  - Tidak ada sistem pelacakan benih yang terintegrasi
+  - Proses persetujuan data masih manual dan tidak terdokumentasi
+  - Tidak ada sistem audit trail untuk perubahan data penelitian
+
+TUJUAN SISTEM:
+  - Digitalisasi dan sentralisasi seluruh data penelitian jagung
+  - Menghadirkan traceability penuh dari benih hingga hasil panen
+  - Menyediakan struktur data yang siap untuk analisis statistik ilmiah
+  - Mendukung percobaan multilokasi dan multi-musim secara terstruktur
+  - Memfasilitasi proses pelepasan varietas secara resmi
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2. TEKNOLOGI YANG DIGUNAKAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+BACKEND (Server):
+  - Framework     : Laravel 13 (PHP 8.3)
+  - Autentikasi   : Laravel Sanctum (token-based API authentication)
+  - Otorisasi     : Spatie Laravel Permission (Role & Permission)
+  - Database      : PostgreSQL 17
+  - Antrian       : Laravel Queue (untuk proses import massal)
+  - Excel         : Maatwebsite Excel (untuk import/export .xlsx)
+  - PDF           : barryvdh/laravel-dompdf
+  - Arsitektur    : RESTful API, Service Layer Pattern
+
+FRONTEND (Antarmuka Pengguna):
+  - Framework     : Next.js 15 (React)
+  - Bahasa        : TypeScript
+  - Styling       : TailwindCSS
+  - Komponen UI   : Radix UI (headless components)
+  - State         : Zustand (global state), TanStack Query (server state)
+  - Tabel         : TanStack Table (data grid dengan filter/sort/paginate)
+  - Formulir      : React Hook Form + Zod (validasi)
+  - HTTP Client   : Axios
+  - Grafik        : Recharts
+
+INFRASTRUKTUR:
+  - Containerisasi : Docker + Docker Compose (siap deploy)
+  - API            : Versioned REST API (/api/v1/)
+  - Autentikasi    : Bearer Token (stateless, aman untuk mobile)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3. PERAN PENGGUNA (USER ROLES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Sistem menggunakan 5 peran pengguna dengan hak akses berbeda:
+
+┌──────────────────────┬────────────────────────────────────────────────────┐
+│ Peran                │ Kewenangan                                         │
+├──────────────────────┼────────────────────────────────────────────────────┤
+│ Super Admin          │ Akses penuh ke seluruh sistem                      │
+│ Peneliti Utama       │ Menyetujui data, mengelola trial, akses analitik   │
+│ Peneliti Lapang      │ Input pengamatan lapang, upload foto, log kegiatan │
+│ Petugas Gudang       │ Monitoring penyimpanan, manajemen inventaris benih  │
+│ Staf Keuangan        │ Pencatatan pengeluaran, monitoring anggaran         │
+└──────────────────────┴────────────────────────────────────────────────────┘
+
+Setiap peran hanya dapat mengakses menu dan fitur yang relevan dengan tugasnya.
+Perubahan peran dapat dilakukan kapan saja oleh Super Admin.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4. MODUL-MODUL SISTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+────────────────────────────────────────────────────────────────────────────────
+4.1  DASHBOARD & ANALITIK
+────────────────────────────────────────────────────────────────────────────────
+
+Halaman utama yang menampilkan ringkasan kondisi penelitian secara real-time.
+
+Kartu KPI (Key Performance Indicator):
+  - Total trial aktif saat ini
+  - Jumlah genotipe terdaftar
+  - Total paket benih tersimpan
+  - Jumlah data menunggu persetujuan
+  - Pengeluaran bulan berjalan
+
+Widget Peringatan Penyimpanan:
+  - Benih dengan stok rendah (< 50g)
+  - Benih dengan kadar air tinggi (> 14%)
+  - Benih yang akan segera kadaluarsa (< 30 hari)
+
+Grafik dan Visualisasi:
+  - Grafik pengeluaran 6 bulan terakhir (bar chart)
+  - Distribusi status trial (pie chart)
+  - Timeline kegiatan lapang terbaru
+  - Breakdown aktivitas per jenis kegiatan
+
+────────────────────────────────────────────────────────────────────────────────
+4.2  MANAJEMEN GENOTIPE
+────────────────────────────────────────────────────────────────────────────────
+
+Basis data master seluruh genotipe jagung yang digunakan dalam penelitian.
+
+Data yang disimpan per genotipe:
+  - Kode genotipe (unik, dapat include kode lama/historis)
+  - Nama genotipe
+  - Kategori: Galur Murni, Hibrida, Varietas, Populasi, Plasma Nutfah
+  - Tipe uji: Kekeringan, Naungan, Normal, Pakan, Jagung Manis, Multi
+  - Asal/origin, nama pemulia, tahun pelepasan
+  - Silsilah (pedigree), catatan pemulia
+  - Status: Aktif, Tidak Aktif, Diarsipkan
+
+Fitur Khusus:
+  - Import massal via textarea (paste kode satu per baris)
+  - Import massal via file Excel (.xlsx/.xls/.csv)
+  - Download template Excel resmi untuk import
+  - Duplikasi otomatis terdeteksi dan dilewati
+  - Pencarian cepat berdasarkan kode atau nama
+
+────────────────────────────────────────────────────────────────────────────────
+4.3  MANAJEMEN TRIAL (PERCOBAAN)
+────────────────────────────────────────────────────────────────────────────────
+
+Pengelolaan percobaan penelitian dari perencanaan hingga selesai.
+
+Data Trial:
+  - Kode dan nama trial
+  - Kategori: Multilokasi, Single Lokasi, Pendahuluan, Lanjutan, Nasional
+  - Tujuan penelitian (Adaptasi Hasil, Ketahanan Penyakit, dll.)
+  - Desain percobaan: RCBD, CRD, Split Plot, Faktorial, Augmented
+  - Jumlah ulangan
+  - Musim tanam dan lokasi utama
+  - Tanggal tanam dan panen
+  - Status: Direncanakan → Aktif → Dipanen → Selesai
+
+Fitur Trial:
+  - Penugasan genotipe ke trial (dengan nomor entri & label perlakuan)
+  - Penetapan check variety
+  - Penugasan peneliti dengan peran (Peneliti Utama, Co-Peneliti, dll.)
+  - Target tahun pelepasan varietas
+
+────────────────────────────────────────────────────────────────────────────────
+4.4  LINGKUNGAN PERCOBAAN (ENVIRONMENT)
+────────────────────────────────────────────────────────────────────────────────
+
+Setiap trial dapat diuji di banyak lokasi dan musim (multilokasi).
+Environment = kombinasi unik Lokasi × Musim Tanam.
+
+Data Environment:
+  - Elevasi (m dpl), sistem irigasi, riwayat lahan
+  - Jenis tanah, curah hujan total, suhu rata-rata
+  - Tanggal tanam dan panen per lokasi
+  - Sumber data: Manual / NASA POWER API / Meteostat API
+
+Data Analisis Tanah per Environment:
+  - pH H₂O dan pH KCl
+  - C-organik, N-total, P-tersedia, K-tersedia
+  - Kapasitas Tukar Kation (KTK)
+  - Tekstur tanah: pasir, debu, liat
+  - Laporan laboratorium (dapat diupload sebagai PDF)
+
+────────────────────────────────────────────────────────────────────────────────
+4.5  DESAIN RCBD & LAYOUT PLOT
+────────────────────────────────────────────────────────────────────────────────
+
+Sistem dapat menghasilkan layout percobaan RCBD secara otomatis dengan
+randomisasi yang dapat direproduksi (reproducible randomization).
+
+Contoh: 14 genotipe × 3 ulangan = 42 plot per lokasi
+
+Fitur:
+  - Generate layout RCBD dengan seed randomisasi (dapat diulang)
+  - Setiap plot memiliki ID unik (kode plot)
+  - Visualisasi layout per blok (tampilan grid)
+  - Informasi dimensi plot (panjang, lebar, jarak tanam)
+  - Ekspor layout untuk panduan penanaman lapang
+  - Pengecekan keseimbangan desain (balance check)
+
+Kode Plot Format: TRIAL-LOKASI-R1-E01 (trial-lokasi-ulangan-entry)
+
+────────────────────────────────────────────────────────────────────────────────
+4.6  PENGAMATAN FENOTIPE (PLOT-LEVEL)
+────────────────────────────────────────────────────────────────────────────────
+
+Pencatatan data pengamatan untuk setiap plot secara terstruktur.
+Setiap pengamatan terhubung ke: Trial → Lokasi → Blok → Plot → Genotipe.
+
+Struktur ini memenuhi persyaratan untuk analisis statistik:
+ANOVA, LSD/BNJ, AMMI, GGE Biplot, BLUP/REML
+
+Variabel Pengamatan yang Tersedia (25+ variabel):
+
+  VEGETATIF:
+    - Tinggi tanaman (cm)
+    - Jumlah daun (helai)
+    - Diameter batang (cm)
+    - Indeks klorofil SPAD
+    - Skor rebah batang (1-5)
+
+  REPRODUKTIF:
+    - Umur berbunga jantan/tasseling (HST)
+    - Umur berbunga betina/silking (HST)
+    - Selang Anthesis-Silking/ASI (hari)
+
+  KARAKTER TONGKOL:
+    - Panjang tongkol (cm)
+    - Diameter tongkol (cm)
+    - Jumlah baris biji
+    - Biji per baris
+    - Skor penutupan klobot (1-5)
+
+  KOMPONEN HASIL:
+    - Bobot tongkol segar (g)
+    - Bobot biji kering (g)
+    - Biomassa total (g)
+    - Indeks panen
+    - Hasil (t/ha) ← variabel wajib
+
+  RESPONS CEKAMAN:
+    - Skor toleransi kekeringan (1-9)
+    - Skor toleransi naungan (1-9)
+    - Skor penyakit (1-9)
+    - Skor serangan hama (1-9)
+
+  KARAKTER BENIH:
+    - Kadar air benih (%)
+    - Vigor benih (%)
+    - Daya kecambah (%)
+
+Fitur:
+  - Form pengamatan per plot dengan validasi range nilai
+  - Penandaan outlier dengan catatan
+  - Penandaan data missing dengan alasan
+  - Status alur kerja: Draft → Dikirim → Disetujui
+  - Ekspor matriks data untuk software statistik
+  - Laporan kelengkapan data (plot mana yang belum diamati)
+
+────────────────────────────────────────────────────────────────────────────────
+4.7  EVALUASI KETAHANAN PENYAKIT
+────────────────────────────────────────────────────────────────────────────────
+
+Modul khusus untuk evaluasi dan klasifikasi ketahanan penyakit jagung.
+
+Penyakit yang Dievaluasi:
+  ┌────────────────────┬────────────────────────────┬─────────────────────┐
+  │ Nama Penyakit      │ Patogen                    │ Skala Penilaian     │
+  ├────────────────────┼────────────────────────────┼─────────────────────┤
+  │ Bulai              │ Peronosclerospora maydis   │ 1-9 (IPTEK)         │
+  │ Hawar Daun         │ Exserohilum turcicum       │ 1-9 (IPTEK)         │
+  │ Karat Daun         │ Puccinia sorghi            │ 1-9 (IPTEK)         │
+  │ Busuk Batang       │ Fusarium moniliforme       │ Persen (%)          │
+  └────────────────────┴────────────────────────────┴─────────────────────┘
+
+Data yang Dicatat per Plot:
+  - Insidensi penyakit (% tanaman terserang)
+  - Skor keparahan (severity score)
+  - Intensitas penyakit (combined metric)
+  - Tanggal pertama gejala muncul
+  - Jumlah tanaman dinilai
+
+Klasifikasi Ketahanan Otomatis:
+  - Tahan (T)
+  - Agak Tahan (AT)
+  - Moderat (M)
+  - Rentan (R)
+  - Sangat Rentan (SR)
+
+Fitur:
+  - Input skor per plot dalam satu sesi evaluasi
+  - Klasifikasi otomatis berdasarkan skor rata-rata
+  - Ringkasan ketahanan per genotipe (lintas semua evaluasi)
+  - Laporan ketahanan siap untuk dokumen pelepasan varietas
+
+────────────────────────────────────────────────────────────────────────────────
+4.8  MONITORING PENYIMPANAN BENIH
+────────────────────────────────────────────────────────────────────────────────
+
+Sistem manajemen inventaris benih berstandar seed bank ilmiah.
+
+UNIT PENYIMPANAN:
+  Tipe unit yang didukung:
+    - Kulkas (2°C – 8°C)
+    - Freezer (-20°C)
+    - Cold Room
+    - Ruang Kering
+    - Kabinet Kontrol Kelembaban
+    - Rak Penyimpanan Biasa
+
+  Data per unit:
+    - Kode unit, nama, lokasi (gedung/ruangan)
+    - Range suhu yang diizinkan (min-max)
+    - Range kelembaban yang diizinkan (min-max)
+    - Kapasitas rak dan kotak per rak
+    - Status aktif/nonaktif
+    - Riwayat pembacaan suhu & kelembaban
+
+INVENTARIS BENIH:
+  Setiap paket benih memiliki:
+    - Kode paket unik
+    - QR Code (siap scan)
+    - Barcode
+    - Genotipe (terhubung ke master genotipe)
+    - Lokasi fisik: Unit → Rak → Kotak → Posisi
+    - Musim asal dan trial sumber (traceability penuh)
+    - Tanggal panen, simpan, dan kadaluarsa
+    - Berat awal dan berat sisa (real-time update)
+    - Kadar air (%)
+    - Daya kecambah (%)
+    - Vigour index
+    - Jumlah biji
+    - Status: Baik / Peringatan / Kritis / Kadaluarsa / Habis / Dibuang
+
+LOG PERGERAKAN BENIH (AUDIT TRAIL BENIH):
+  Setiap pengambilan, penambahan, atau pemindahan benih dicatat:
+    - Kode pergerakan unik
+    - Jenis pergerakan:
+        * Masuk Awal (in_initial)
+        * Transfer Antar Unit (in_transfer)
+        * Pengembalian (in_return)
+        * Keluar untuk Tanam (out_planting)
+        * Penggunaan Laboratorium (out_laboratory)
+        * Distribusi (out_distribution)
+        * Dibuang (out_discard)
+        * Penyesuaian (adjustment)
+    - Jumlah (gram)
+    - Saldo setelah pergerakan (snapshot)
+    - Tujuan/penerima
+    - Terhubung ke trial tertentu
+    - Siapa yang melakukan, siapa yang menyetujui
+
+MONITORING KONDISI:
+  - Pembacaan suhu & kelembaban (manual / sensor / import)
+  - Riwayat tren kondisi penyimpanan
+  - Peringatan otomatis jika melebihi batas
+
+PERINGATAN OTOMATIS:
+  - Stok benih rendah (< 50g)
+  - Kadar air tinggi (> 14%)
+  - Benih mendekati kadaluarsa (< 30 hari)
+  - Unit penyimpanan hampir penuh
+
+LOOKUP CEPAT:
+  - Scan QR Code / Barcode untuk langsung menemukan paket benih
+
+────────────────────────────────────────────────────────────────────────────────
+4.9  PIPELINE IMPORT DATA HISTORIS
+────────────────────────────────────────────────────────────────────────────────
+
+Sistem import data dari spreadsheet Excel dengan validasi berlapis,
+dirancang untuk migrasi data historis yang terpercaya.
+
+Alur Kerja Import (5 Tahap):
+  1. UPLOAD    — File Excel diterima, disimpan, baris diparsing ke staging
+  2. VALIDASI  — Setiap baris dinormalisasi dan divalidasi
+  3. PREVIEW   — Pengguna melihat hasil validasi baris per baris
+  4. KONFIRMASI— Hanya baris valid yang diimport ke database produksi
+  5. ROLLBACK  — Seluruh batch dapat dibatalkan jika diperlukan
+
+Normalisasi Cerdas:
+  - Kode genotipe: berbagai format disatukan (HJ01, HJ-01, hj_01 → HJ-01)
+  - Tanggal: semua format diterima (DD/MM/YYYY, YYYY-MM-DD, serial Excel)
+  - Desimal: format Indonesia (14,5%) dan Internasional (14.5) keduanya valid
+  - Berat: konversi otomatis kg → gram (0.5 kg → 500 g)
+  - Status: label Indonesia diterima (Baik → good, Kadaluarsa → expired)
+
+Validasi yang Dilakukan:
+  - Kode genotipe harus ada di master data
+  - Kode unit penyimpanan harus terdaftar
+  - Deteksi duplikasi dalam file
+  - Deteksi duplikasi dengan data yang sudah ada di database
+  - Validasi logika berat (sisa tidak boleh > awal)
+  - Validasi rentang nilai (kadar air 0-100%, germination 0-100%)
+  - Peringatan jika kadar air > 14% (risiko kerusakan benih)
+  - Peringatan jika daya kecambah < 70% (di bawah standar benih bersertifikat)
+
+Setelah Import:
+  - QR Code dan Barcode digenerate otomatis untuk setiap paket
+  - Movement record awal (in_initial) dibuat otomatis untuk audit trail
+  - Laporan hasil import (berhasil / dilewati / gagal) tersedia
+
+Template Import:
+  - Template Excel resmi tersedia untuk download
+  - Format kolom sudah ditentukan dengan keterangan
+  - Contoh data disertakan dalam template
+
+────────────────────────────────────────────────────────────────────────────────
+4.10  KEGIATAN LAPANG
+────────────────────────────────────────────────────────────────────────────────
+
+Log digital seluruh kegiatan operasional di lapangan.
+
+Jenis Kegiatan yang Didukung:
+  - Penanaman           - Penyiangan
+  - Penyerbukan         - Monitoring Umum
+  - Pemupukan           - Penerbangan Drone
+  - Irigasi             - Pengamatan Penyakit
+  - Pengendalian HPT    - Pengambilan Sampel
+  - Pemanenan           - Persiapan Lahan
+
+Data per Kegiatan:
+  - Terhubung ke trial dan lokasi
+  - Tanggal, waktu mulai, waktu selesai
+  - Koordinat GPS
+  - Upload foto lapang
+  - Bahan yang digunakan (item, jumlah, satuan)
+  - Kondisi cuaca saat kegiatan
+  - Status: Dikirim → Disetujui
+
+Tampilan:
+  - Timeline kronologis dengan filter per jenis kegiatan
+  - Persetujuan satu klik oleh Peneliti Utama
+
+────────────────────────────────────────────────────────────────────────────────
+4.11  JADWAL PENGAMATAN
+────────────────────────────────────────────────────────────────────────────────
+
+Sistem penjadwalan pengamatan lapang dengan pengingat dan deteksi data hilang.
+
+Fitur:
+  - Buat jadwal pengamatan untuk trial tertentu
+  - Penugasan ke peneliti tertentu
+  - Pengingat otomatis (N hari sebelum jadwal)
+  - Deteksi jadwal yang terlewat (overdue alert)
+  - Tampilan kalender per bulan
+  - Laporan plot yang belum diamati
+  - Tingkat kelengkapan data (% plot teramati)
+
+Jenis Jadwal:
+  - Pengamatan Fenotipe
+  - Evaluasi Penyakit
+  - Kegiatan Lapang
+  - Panen / Pengukuran Hasil
+  - Pengambilan Sampel
+
+────────────────────────────────────────────────────────────────────────────────
+4.12  KEUANGAN & ANGGARAN PENELITIAN
+────────────────────────────────────────────────────────────────────────────────
+
+Manajemen keuangan penelitian dengan alur persetujuan digital.
+
+Kategori Pengeluaran:
+  - Operasi Lapang
+  - Logistik & Transportasi
+  - Laboratorium
+  - Peralatan
+  - Tenaga Kerja
+  - Pupuk & Pestisida
+  - Irigasi
+  - Administrasi
+
+Fitur:
+  - Pencatatan pengeluaran dengan upload bukti (foto/PDF)
+  - Terhubung ke trial dan musim tertentu
+  - Alur persetujuan: Pending → Disetujui / Ditolak / Perlu Revisi
+  - Manajemen anggaran (budget) per sumber dana
+  - Grafik utilisasi anggaran (realisasi vs rencana)
+  - Laporan bulanan pengeluaran
+  - Analisis biaya per trial
+  - Tracking sumber pendanaan
+
+────────────────────────────────────────────────────────────────────────────────
+4.13  MANAJEMEN DOKUMEN PENELITIAN
+────────────────────────────────────────────────────────────────────────────────
+
+Repositori dokumen terorganisir untuk semua dokumen penelitian.
+
+Kategori Dokumen:
+  - SOP & Protokol Penelitian
+  - Data Curah Hujan
+  - Hasil Analisis Tanah
+  - Daftar Genotipe
+  - Dokumentasi Lapang
+  - Laporan Panen
+  - Output Statistik (ANOVA, Biplot)
+  - Dokumen Pelepasan Varietas
+  - Laporan Keuangan
+  - Lainnya
+
+Fitur:
+  - Upload file: PDF, Excel, Word, CSV, ZIP, Gambar
+  - Ukuran maksimum: 50 MB per file
+  - Versi dokumen (versioning)
+  - Terhubung ke trial, lokasi, atau musim tertentu
+  - Filter dokumen per kategori
+  - Deskripsi dan tanggal dokumen
+
+────────────────────────────────────────────────────────────────────────────────
+4.14  PIPELINE PELEPASAN VARIETAS
+────────────────────────────────────────────────────────────────────────────────
+
+Sistem pelacakan kandidat varietas dari evaluasi hingga pelepasan resmi.
+
+Status Pipeline:
+  Under Evaluation → Proposed → Submitted to Board →
+  Approved → Released / Rejected / Withdrawn
+
+Data Kandidat:
+  - Nama varietas yang diusulkan
+  - Terhubung ke genotipe master
+  - Tahun mulai evaluasi
+  - Target tahun pelepasan
+  - Jumlah lokasi dan tahun uji
+  - Rata-rata hasil (t/ha)
+  - Superioritas hasil vs check (%)
+  - Ringkasan ketahanan penyakit (otomatis dari data evaluasi)
+  - Zona adaptasi yang direkomendasikan
+  - Nomor dan tanggal pengajuan ke tim penilai
+  - Nomor SK pelepasan varietas
+
+Kalkulasi Otomatis:
+  - Sistem dapat menghitung ringkasan kinerja dari data trial yang disetujui
+  - Kompilasi ketahanan penyakit dari seluruh evaluasi
+
+────────────────────────────────────────────────────────────────────────────────
+4.15  AUDIT TRAIL SISTEM
+────────────────────────────────────────────────────────────────────────────────
+
+Setiap perubahan data dicatat secara permanen dan tidak dapat dihapus.
+
+Yang Dicatat:
+  - Siapa yang melakukan perubahan (nama pengguna)
+  - Kapan perubahan terjadi (timestamp)
+  - Data sebelum perubahan (old values)
+  - Data setelah perubahan (new values)
+  - Jenis aksi (created, updated, deleted, approved, imported, dll.)
+  - Alamat IP dan browser pengguna
+  - URL endpoint yang diakses
+
+Manfaat:
+  - Akuntabilitas penuh atas setiap perubahan data penelitian
+  - Bukti integritas data untuk keperluan publikasi ilmiah
+  - Investigasi jika terjadi kesalahan input
+  - Riwayat lengkap setiap entitas (siapa mengubah apa, kapan)
+
+────────────────────────────────────────────────────────────────────────────────
+4.16  MASTER DATA
+────────────────────────────────────────────────────────────────────────────────
+
+Data referensi yang menjadi fondasi seluruh sistem:
+
+  MUSIM TANAM:
+    - Kode musim, nama, tanggal mulai, tanggal akhir
+    - Status: Akan Datang, Aktif, Selesai
+
+  LOKASI PENELITIAN:
+    - Kode dan nama kebun percobaan
+    - Koordinat GPS (lintang, bujur, elevasi)
+    - Desa, kecamatan, kabupaten, provinsi
+    - Luas (hektar), jenis tanah
+
+  UNIT PENYIMPANAN:
+    - Kulkas, freezer, cold room, kabinet, rak
+    - Range suhu dan kelembaban
+    - Kapasitas rak dan kotak
+
+  TIPE TRIAL:
+    - Kekeringan, Naungan, Normal, Pakan, Jagung Manis
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5. STRUKTUR DATABASE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Total: 39 tabel database yang saling terhubung
+
+MODUL AUTENTIKASI & PENGGUNA (5 tabel):
+  users, roles, permissions, model_has_roles, model_has_permissions
+
+MASTER DATA (4 tabel):
+  seasons, locations, storage_units, trial_types
+
+GENOTIPE (1 tabel):
+  genotypes
+
+MANAJEMEN TRIAL (5 tabel):
+  trials, trial_genotypes, trial_researchers,
+  environments, trial_environments
+
+DESAIN PERCOBAAN (3 tabel):
+  trial_blocks, trial_plots, trial_layouts
+
+FENOTIPE (3 tabel):
+  phenotype_variables, plot_observations, plot_observation_values
+
+PENYAKIT (3 tabel):
+  disease_types, disease_evaluations, disease_scores
+
+PENYIMPANAN BENIH (4 tabel):
+  seed_inventories, seed_movements, storage_readings,
+  [+ storage_units dari master data]
+
+DATA LINGKUNGAN (2 tabel):
+  soil_analyses, weather_records
+
+KEUANGAN (3 tabel):
+  expense_categories, budgets, expenses
+
+KEGIATAN & LAPANG (2 tabel):
+  field_activities, observation_schedules
+
+ADMINISTRASI (2 tabel):
+  research_documents, variety_candidates
+
+IMPORT PIPELINE (3 tabel):
+  inventory_import_batches, inventory_import_staging,
+  storage_unit_import_staging
+
+SISTEM (3 tabel):
+  audit_logs, system_notifications, file_attachments
+
+Seluruh tabel menggunakan:
+  - Primary key integer auto-increment
+  - Foreign key constraints (integritas referensial)
+  - Soft delete (data tidak benar-benar dihapus, hanya ditandai)
+  - Timestamps (created_at, updated_at)
+  - Index pada kolom yang sering dicari
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6. ANTARMUKA PENGGUNA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DESAIN:
+  - Modern, bersih, profesional — gaya SaaS pertanian/sains
+  - Sidebar navigasi dengan pengelompokan menu
+  - Responsif untuk desktop dan tablet
+  - Loading skeleton saat data dimuat
+  - Toast notifikasi untuk feedback aksi
+
+HALAMAN-HALAMAN:
+  /login                   — Halaman login dengan demo credentials
+  /dashboard               — Dashboard utama dengan KPI dan grafik
+  /genotypes               — Manajemen genotipe + import massal
+  /trials                  — Manajemen trial (tampilan kartu & tabel)
+  /trials/[id]             — Detail trial: layout RCBD, plot, pengamatan
+  /environments            — Daftar lingkungan percobaan
+  /phenotype               — Data pengamatan fenotipe per plot
+  /disease                 — Evaluasi ketahanan penyakit
+  /schedules               — Jadwal pengamatan lapang
+  /field-activities        — Timeline kegiatan lapang
+  /storage                 — Monitoring inventaris benih
+  /storage/import          — Pipeline import data historis benih
+  /finance                 — Keuangan dan monitoring anggaran
+  /documents               — Repositori dokumen penelitian
+  /variety-candidates      — Pipeline pelepasan varietas
+  /master-data             — Manajemen data referensi
+  /users                   — Manajemen pengguna
+  /audit                   — Riwayat audit trail
+
+KOMPONEN KUNCI:
+  - DataTable      : Tabel data dengan sort, filter, paginate, pencarian
+  - StatusBadge    : Badge warna berdasarkan status
+  - PageHeader     : Header konsisten dengan tombol aksi
+  - Form modals    : Modal formulir validasi real-time
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7. KEAMANAN SISTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - Autentikasi token (Bearer Token) — tidak menggunakan session cookie
+  - Token kadaluarsa otomatis setelah 7 hari
+  - Password di-hash menggunakan Bcrypt (tidak disimpan dalam bentuk plain)
+  - Role-Based Access Control (RBAC) — setiap endpoint dilindungi permission
+  - Validasi input di frontend dan backend (lapisan ganda)
+  - Soft delete — data tidak pernah benar-benar hilang
+  - Audit trail — setiap perubahan data tercatat permanen
+  - CORS dikonfigurasi hanya mengizinkan domain yang disetujui
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8. ARSITEKTUR API
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - Semua endpoint: /api/v1/... (versioned API)
+  - Format respons: JSON
+  - Autentikasi: Authorization: Bearer {token}
+  - Pagination: ?page=1&per_page=20
+  - Pencarian: ?search=keyword
+  - Filter: ?status=active&season_id=1
+
+Total: 130+ endpoint API yang mencakup:
+  - Autentikasi (login, logout, profil)
+  - CRUD semua entitas
+  - Import pipeline (upload, validasi, preview, konfirmasi, rollback)
+  - Analitik dan laporan
+  - Download template
+  - Approval workflow
+  - Lookup QR/barcode
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+9. KESIAPAN DEPLOYMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  - Docker Compose untuk deploy backend, frontend, database sekaligus
+  - Semua konfigurasi melalui environment variables (tidak ada hardcode)
+  - Mendukung penyimpanan lokal dan cloud (S3-compatible)
+  - Queue system untuk proses berat (import, notifikasi)
+  - Database migration dan seeding tersedia
+
+Kebutuhan Server Minimum:
+  - RAM      : 2 GB
+  - Storage  : 20 GB
+  - PHP      : 8.3+
+  - Node.js  : 22+
+  - Database : PostgreSQL 16+
+
+Akun Demo Tersedia:
+  - Super Admin    : admin@cornbreed-unpad.ac.id   / password
+  - Peneliti Utama : researcher@cornbreed-unpad.ac.id / password
+  - Peneliti Lapang: field@cornbreed-unpad.ac.id   / password
+  - Petugas Gudang : storage@cornbreed-unpad.ac.id / password
+  - Staf Keuangan  : finance@cornbreed-unpad.ac.id / password
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+10. ROADMAP PENGEMBANGAN LANJUTAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Arsitektur sistem dirancang untuk dapat dikembangkan ke arah berikut:
+
+INTEGRASI CUACA & IKLIM:
+  [ ] NASA POWER API — data cuaca historis berbasis koordinat GPS
+  [ ] Meteostat API  — data stasiun cuaca terdekat
+  [ ] BMKG API       — data cuaca Indonesia resmi
+
+INTEGRASI PERANGKAT LAPANG:
+  [ ] Sensor IoT untuk monitoring suhu/kelembaban gudang real-time
+  [ ] Integrasi drone untuk pemetaan dan analisis citra tanaman
+  [ ] Scanner QR Code berbasis kamera mobile (Progressive Web App)
+  [ ] Scanner Barcode untuk mobilisasi benih di lapangan
+
+GIS & PEMETAAN:
+  [ ] Visualisasi peta lokasi penelitian (Leaflet/Mapbox)
+  [ ] Plotting koordinat plot di lapangan
+  [ ] Overlay analisis citra drone
+
+ANALISIS STATISTIK LANJUTAN:
+  [ ] Modul ANOVA langsung di dalam sistem
+  [ ] GGE Biplot interaktif
+  [ ] AMMI analysis (Additive Main Effects and Multiplicative Interaction)
+  [ ] BLUP/REML untuk estimasi nilai pemuliaan (Breeding Value)
+  [ ] Ekspor langsung ke format R dan SAS
+
+KECERDASAN BUATAN:
+  [ ] Rekomendasi genotipe berbasis kinerja historis
+  [ ] Deteksi anomali data pengamatan
+  [ ] Prediksi hasil berdasarkan kondisi lingkungan
+
+KOMUNIKASI & KOLABORASI:
+  [ ] Notifikasi WhatsApp (via WhatsApp Business API)
+  [ ] Notifikasi email otomatis
+  [ ] Multi-institusi (kolaborasi antar universitas/lembaga)
+  [ ] API publik untuk integrasi dengan sistem eksternal
+
+FITUR ILMIAH TAMBAHAN:
+  [ ] Generator laporan publikasi otomatis
+  [ ] Deskriptor varietas otomatis untuk proses pelepasan
+  [ ] Perhitungan AUDPC (Area Under Disease Progress Curve)
+  [ ] Analisis stabilitas genotipe (Eberhart & Russell)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+11. RINGKASAN NILAI SISTEM
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  SEBELUM sistem ini:
+    ✗ Data tersebar di banyak file Excel tanpa standarisasi
+    ✗ Tidak ada pelacakan pergerakan benih
+    ✗ Proses persetujuan data tidak terdokumentasi
+    ✗ Risiko kehilangan data historis
+    ✗ Sulit melakukan analisis lintas musim/lokasi
+    ✗ Tidak ada sistem peringatan untuk kondisi kritis
+    ✗ Kolaborasi antar peneliti sangat terbatas
+
+  SETELAH sistem ini:
+    ✓ Satu platform terpusat untuk seluruh data penelitian
+    ✓ Traceability penuh dari benih hingga laporan pelepasan varietas
+    ✓ Audit trail permanen untuk setiap perubahan data
+    ✓ Sistem peringatan otomatis untuk kondisi penyimpanan kritis
+    ✓ Data terstruktur siap untuk analisis statistik ANOVA/AMMI/GGE
+    ✓ Desain RCBD otomatis dengan randomisasi reproducible
+    ✓ Pipeline import Excel yang aman dengan validasi berlapis
+    ✓ Akses multi-peran dengan kontrol hak akses granular
+    ✓ Ekspor data siap untuk software statistik (R, SAS, Genstat)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+12. INFORMASI TEKNIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Lokasi Backend  : c:\laragon\www\corn_project\backend
+  Lokasi Frontend : c:\laragon\www\corn_project\frontend
+  Backend Port    : http://localhost:8000
+  Frontend Port   : http://localhost:3000
+
+  Database        : corn_breed_unpad (PostgreSQL)
+  Total Tabel     : 39 tabel
+  Total API Routes: 130+ endpoint
+
+  Menjalankan Sistem (Development):
+    Backend  : php artisan serve --port=8000
+    Frontend : npm run dev
+
+  Inisialisasi Database:
+    php artisan migrate
+    php artisan db:seed
+
+================================================================================
+          Corn Breed UNPAD 2026 — Platform Pemuliaan Jagung Profesional
+          Dibangun dengan standar SaaS penelitian pertanian modern
+================================================================================

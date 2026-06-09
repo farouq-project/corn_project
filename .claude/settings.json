@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(composer --version 2>&1)",
+      "PowerShell(node --version 2>&1)",
+      "PowerShell(npm --version 2>&1)",
+      "PowerShell(Get-Command composer -ErrorAction SilentlyContinue)",
+      "PowerShell(& \"C:\\\\laragon\\\\bin\\\\composer\\\\composer.bat\" --version 2>&1)",
+      "Bash(php --ini)",
+      "Bash(psql --version)",
+      "Read(//c/Program Files/PostgreSQL/**)",
+      "Read(//c//**)",
+      "Bash(find /c/ -name \"psql.exe\" 2>/dev/null | head -5; find /c/laragon -name \"*.exe\" 2>/dev/null | grep -i postgres | head -10)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\pg_ctl.exe\" status -D \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data\" 2>&1)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\pg_ctl.exe\" start -D \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data\" -l \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data\\\\pg_log\\\\startup.log\" 2>&1)",
+      "PowerShell(& \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\pg_ctl.exe\" start -D \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data\" 2>&1)",
+      "PowerShell(netstat -ano | Select-String \":5432\"; Get-Process -Id \\(netstat -ano | Select-String \":5432\" | ForEach-Object { $_.ToString\\(\\).Split\\(\\)[-1] } | Select-Object -First 1\\) -ErrorAction SilentlyContinue | Select-Object Id, Name, Path)",
+      "Bash(netstat -ano)",
+      "Bash(\"/c/Program Files/PostgreSQL/17/bin/psql.exe\" -U postgres -c \"SELECT version\\(\\);\")",
+      "PowerShell(Start-Process -FilePath \"C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\bin\\\\pg_ctl.exe\" -ArgumentList 'start', '-D', 'C:\\\\Program Files\\\\PostgreSQL\\\\17\\\\data' -Verb RunAs -Wait 2>&1)",
+      "PowerShell(netstat -ano)",
+      "PowerShell(Get-Process -Name \"postgres\" -ErrorAction SilentlyContinue)",
+      "Bash(grep -v \"^$\")",
+      "PowerShell(Start-Service -Name \"postgresql-x64-17\" 2>&1)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\laragon\\\\www\\\\corn_project\\\\backend\\\\vendor\" -Name | Where-Object { $_ -match \"laravel|spatie\" })",
+      "Bash(grep -r 'protected $guard\\\\|protected.*sanctum' /c/laragon/www/corn_project/backend/app/)",
+      "Bash(php -r ' *)",
+      "Bash(mkdir -p \"c:/laragon/www/corn_project/frontend/src/app/\\(dashboard\\)/trials/[id]\" && mkdir -p \"c:/laragon/www/corn_project/frontend/src/app/\\(dashboard\\)/disease\" && mkdir -p \"c:/laragon/www/corn_project/frontend/src/app/\\(dashboard\\)/documents\" && mkdir -p \"c:/laragon/www/corn_project/frontend/src/app/\\(dashboard\\)/schedules\" && mkdir -p \"c:/laragon/www/corn_project/frontend/src/app/\\(dashboard\\)/variety-candidates\" && echo \"Done\")",
+      "Bash(python -c ' *)",
+      "Bash(python -)",
+      "Bash(python3 -c ' *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Program Files\\PostgreSQL\\17\\data",
+      "c:\\laragon\\www\\corn_project\\frontend\\src\\app\\(dashboard)\\trials"
+    ]
+  }
+}
