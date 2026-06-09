@@ -66,7 +66,7 @@ export default function TrialsPage() {
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as never,
     defaultValues: { status: "planned", layout_design: "RCBD", replications: 3 },
   });
 

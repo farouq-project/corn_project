@@ -103,17 +103,17 @@ export default function StoragePage() {
   });
 
   const inventoryForm = useForm<InventoryForm>({
-    resolver: zodResolver(inventorySchema),
+    resolver: zodResolver(inventorySchema) as never,
     defaultValues: { remaining_weight_g: 0, storage_date: new Date().toISOString().slice(0, 10) },
   });
 
   const movementForm = useForm<MovementForm>({
-    resolver: zodResolver(movementSchema),
+    resolver: zodResolver(movementSchema) as never,
     defaultValues: { movement_date: new Date().toISOString().slice(0, 10) },
   });
 
   const unitForm = useForm<UnitForm>({
-    resolver: zodResolver(unitSchema),
+    resolver: zodResolver(unitSchema) as never,
   });
 
   const createInventoryMutation = useMutation({

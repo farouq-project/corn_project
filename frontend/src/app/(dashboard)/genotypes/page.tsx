@@ -62,7 +62,7 @@ export default function GenotypesPage() {
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as never,
     defaultValues: { status: "active", category: "inbred_line", trial_type: "normal" },
   });
 

@@ -76,12 +76,12 @@ export default function FinancePage() {
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ExpenseForm>({
-    resolver: zodResolver(expenseSchema),
+    resolver: zodResolver(expenseSchema) as never,
     defaultValues: { payment_date: new Date().toISOString().slice(0, 10) },
   });
 
   const budgetForm = useForm<BudgetForm>({
-    resolver: zodResolver(budgetSchema),
+    resolver: zodResolver(budgetSchema) as never,
   });
 
   const createMutation = useMutation({

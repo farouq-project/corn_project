@@ -117,7 +117,7 @@ export default function PhenotypePage() {
   });
 
   const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<ObsForm>({
-    resolver: zodResolver(obsSchema),
+    resolver: zodResolver(obsSchema) as never,
     defaultValues: { replication: 1, observation_date: new Date().toISOString().slice(0, 10) },
   });
 
