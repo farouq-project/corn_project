@@ -31,6 +31,12 @@ export interface Environment {
   season?: {
     season_name: string;
   };
+  elevation_m?: number;
+  avg_temperature_c?: number;
+  total_rainfall_mm?: number;
+  irrigation_type?: string;
+  planting_date?: string;
+  harvest_date?: string;
 }
 
 export interface Season {

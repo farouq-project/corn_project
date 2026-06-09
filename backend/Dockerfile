@@ -9,6 +9,7 @@ RUN apk add --no-cache \
     libwebp-dev \
     oniguruma-dev \
     libxml2-dev \
+    libzip-dev \
     zip \
     unzip \
     curl \
@@ -23,7 +24,8 @@ RUN docker-php-ext-install \
     pcntl \
     bcmath \
     gd \
-    opcache
+    opcache \
+    zip
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
