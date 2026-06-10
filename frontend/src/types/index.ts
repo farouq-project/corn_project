@@ -353,3 +353,49 @@ export interface StorageAlerts {
   high_moisture: number;
   expiring_soon: number;
 }
+
+// ── Phenotyping (Data Pengamatan / Data Rata-Rata) ──────────────────────────
+
+export interface Characteristic {
+  id: number;
+  code: string;
+  name: string;
+  unit?: string;
+  group?: string;
+  display_order: number;
+  decimal_places: number;
+  is_active: boolean;
+}
+
+export interface ObservationRecord {
+  id: number;
+  record_code: string;
+  plot_no: string;
+  genotype_id: number;
+  genotype?: Genotype;
+  environment_id: number;
+  environment?: Environment;
+  season_id: number;
+  replication: number;
+  notes?: string;
+  recorded_by?: number;
+  recorder?: User;
+  values: Record<string, number | null>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AggregatedCharacteristicData {
+  values: Record<string, number | null>;
+  imputed: Record<string, boolean>;
+  average: number | null;
+}
+
+export interface AggregatedRow {
+  genotype_id: number;
+  genotype_code: string;
+  genotype_name: string;
+  environment_id: number;
+  environment_code: string;
+  characteristics: Record<string, AggregatedCharacteristicData>;
+}

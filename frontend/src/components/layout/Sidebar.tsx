@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   Dna,
   Package,
-  FlaskConical,
   Activity,
   Wallet,
   Map,
@@ -21,6 +20,8 @@ import {
   CalendarClock,
   Award,
   MapPin,
+  Table2,
+  Sigma,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -41,9 +42,15 @@ const navigation = [
     ],
   },
   {
+    label: "Phenotyping",
+    items: [
+      { name: "Data Pengamatan", href: "/phenotyping/data-pengamatan", icon: Table2 },
+      { name: "Data Rata-Rata", href: "/phenotyping/data-rata-rata", icon: Sigma },
+    ],
+  },
+  {
     label: "Pengamatan",
     items: [
-      { name: "Fenotipe (Plot-level)", href: "/phenotype", icon: FlaskConical },
       { name: "Evaluasi Penyakit", href: "/disease", icon: Bug },
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
     ],

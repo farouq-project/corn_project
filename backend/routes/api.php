@@ -10,8 +10,11 @@ use App\Http\Controllers\Api\V1\ExpenseController;
 use App\Http\Controllers\Api\V1\FieldActivityController;
 use App\Http\Controllers\Api\V1\GenotypeController;
 use App\Http\Controllers\Api\V1\MasterDataController;
+use App\Http\Controllers\Api\V1\CharacteristicController;
+use App\Http\Controllers\Api\V1\ObservationRecordController;
 use App\Http\Controllers\Api\V1\ObservationScheduleController;
 use App\Http\Controllers\Api\V1\PhenotypeController;
+use App\Http\Controllers\Api\V1\PhenotypingImportController;
 use App\Http\Controllers\Api\V1\PlotObservationController;
 use App\Http\Controllers\Api\V1\ResearchDocumentController;
 use App\Http\Controllers\Api\V1\StorageController;
@@ -167,7 +170,34 @@ Route::prefix('v1')->group(function () {
             Route::post('{candidate}/calculate-summary', [VarietyCandidateController::class, 'calculateSummary']);
         });
 
-        // Phenotyping
+        // Phenotyping (new spreadsheet-based workflow)
+        Route::prefix('phenotyping')->group(function () {
+            Route::get('characteristics', [CharacteristicController::class, 'index']);
+            Route::post('characteristics', [CharacteristicController::class, 'store']);
+            Route::put('characteristics/{characteristic}', [CharacteristicController::class, 'update']);
+            Route::delete('characteristics/{characteristic}', [CharacteristicController::class, 'destroy']);
+
+            Route::get('records', [ObservationRecordController::class, 'index']);
+            Route::post('records', [ObservationRecordController::class, 'store']);
+            Route::put('records/{record}', [ObservationRecordController::class, 'update']);
+            Route::delete('records/{record}', [ObservationRecordController::class, 'destroy']);
+
+            Route::get('aggregate', [ObservationRecordController::class, 'aggregate']);
+
+            // Bulk import (Phase 2 scaffolding — only template download + upload work)
+            Route::prefix('import')->group(function () {
+                Route::get('template', [PhenotypingImportController::class, 'downloadTemplate']);
+                Route::get('batches', [PhenotypingImportController::class, 'batchIndex']);
+                Route::get('batches/{batch}', [PhenotypingImportController::class, 'batchShow']);
+                Route::post('upload', [PhenotypingImportController::class, 'upload']);
+                Route::post('batches/{batch}/validate', [PhenotypingImportController::class, 'validateBatch']);
+                Route::get('batches/{batch}/preview', [PhenotypingImportController::class, 'preview']);
+                Route::post('batches/{batch}/confirm', [PhenotypingImportController::class, 'confirm']);
+                Route::post('batches/{batch}/rollback', [PhenotypingImportController::class, 'rollback']);
+            });
+        });
+
+        // Phenotyping (legacy, plot-level)
         Route::prefix('phenotype')->group(function () {
             // Variables (trait definitions)
             Route::get('variables', [PhenotypeController::class, 'variableIndex']);
