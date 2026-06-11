@@ -340,18 +340,10 @@ export interface AuditLog {
 }
 
 export interface DashboardStats {
-  active_trials: number;
   total_genotypes: number;
-  total_seed_inventory: number;
-  pending_phenotype_approvals: number;
-  pending_expenses: number;
-  recent_activities_count: number;
-}
-
-export interface StorageAlerts {
-  low_stock: number;
-  high_moisture: number;
-  expiring_soon: number;
+  total_environments: number;
+  total_observation_records: number;
+  total_characteristics: number;
 }
 
 // ── Phenotyping (Data Pengamatan / Data Rata-Rata) ──────────────────────────

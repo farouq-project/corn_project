@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -23,6 +23,7 @@ function HydrationSkeleton() {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, _hasHydrated } = useAuthStore();
   const router = useRouter();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     if (_hasHydrated && !isAuthenticated) {
@@ -38,10 +39,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar />
+      <Sidebar isOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <TopBar onMenuClick={() => setMobileNavOpen(true)} />
+        <main className="flex-1 overflow-y-auto p-3 md:p-6">
           {children}
         </main>
       </div>

@@ -119,12 +119,12 @@ export default function DataPengamatanPage() {
         }
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <label className="text-sm text-gray-600">Environment:</label>
         <select
           value={environmentFilter}
           onChange={(e) => setEnvironmentFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-full sm:w-auto"
         >
           <option value="">Semua Environment</option>
           {environments.map((env) => (

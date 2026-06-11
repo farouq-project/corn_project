@@ -22,7 +22,8 @@ class ObservationRecordController extends Controller
             ->when($request->filled('season_id'), fn($q) => $q->where('season_id', $request->season_id))
             ->when($request->filled('replication'), fn($q) => $q->where('replication', $request->replication));
 
-        $records = $query->orderBy('plot_no')->paginate($request->per_page ?? 50);
+        $perPage = min((int) ($request->per_page ?? 50), 500);
+        $records = $query->orderBy('plot_no')->paginate($perPage);
 
         $records->getCollection()->transform(fn($record) => $this->formatRecord($record));
 
@@ -126,6 +127,16 @@ class ObservationRecordController extends Controller
             'environment_id' => ['nullable', 'exists:environments,id'],
             'genotype_id' => ['nullable', 'exists:genotypes,id'],
         ]);
+
+        $countQuery = ObservationRecord::query()
+            ->when($request->filled('environment_id'), fn($q) => $q->where('environment_id', $request->environment_id))
+            ->when($request->filled('genotype_id'), fn($q) => $q->where('genotype_id', $request->genotype_id));
+
+        if ($countQuery->count() > 5000) {
+            return response()->json([
+                'message' => 'Terlalu banyak data untuk diagregasi sekaligus. Silakan filter berdasarkan Environment atau Genotipe.',
+            ], 422);
+        }
 
         $records = ObservationRecord::with(['genotype', 'environment', 'values'])
             ->when($request->filled('environment_id'), fn($q) => $q->where('environment_id', $request->environment_id))

@@ -2,47 +2,23 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
-  FlaskConical,
   Dna,
-  Package,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
+  MapPin,
+  Sheet,
+  Ruler,
   Activity,
-  Wallet,
+  Table2,
+  Sigma,
+  ArrowRight,
 } from "lucide-react";
 import api from "@/lib/axios";
-import { formatCurrency, formatDate, getStatusColor, cn } from "@/lib/utils";
-import type { DashboardStats, StorageAlerts, FieldActivity } from "@/types";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
-} from "recharts";
+import { formatDate, getStatusColor, cn } from "@/lib/utils";
+import type { DashboardStats, FieldActivity } from "@/types";
 
 interface DashboardData {
   stats: DashboardStats;
-  storage_alerts: StorageAlerts;
   recent_activities: FieldActivity[];
-  monthly_expenses: Array<{ month: string; total: string }>;
-  trial_status_breakdown: Record<string, number>;
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  active: "#22c55e",
-  planned: "#3b82f6",
-  harvested: "#a855f7",
-  completed: "#10b981",
-  cancelled: "#ef4444",
-};
 
 export default function DashboardPage() {
   const { data, isLoading } = useQuery({
@@ -63,17 +39,8 @@ export default function DashboardPage() {
   }
 
   const stats = data?.stats;
-  const alerts = data?.storage_alerts;
 
   const statCards = [
-    {
-      title: "Trial Aktif",
-      value: stats?.active_trials ?? 0,
-      icon: FlaskConical,
-      color: "text-blue-600",
-      bg: "bg-blue-50",
-      desc: "penelitian berjalan",
-    },
     {
       title: "Total Genotipe",
       value: stats?.total_genotypes ?? 0,
@@ -83,39 +50,30 @@ export default function DashboardPage() {
       desc: "genotipe aktif",
     },
     {
-      title: "Inventaris Benih",
-      value: stats?.total_seed_inventory ?? 0,
-      icon: Package,
-      color: "text-green-600",
-      bg: "bg-green-50",
-      desc: "paket benih tersimpan",
+      title: "Total Environment",
+      value: stats?.total_environments ?? 0,
+      icon: MapPin,
+      color: "text-blue-600",
+      bg: "bg-blue-50",
+      desc: "lokasi × musim",
     },
     {
-      title: "Perlu Persetujuan",
-      value: (stats?.pending_phenotype_approvals ?? 0) + (stats?.pending_expenses ?? 0),
-      icon: Clock,
+      title: "Data Pengamatan",
+      value: stats?.total_observation_records ?? 0,
+      icon: Sheet,
+      color: "text-green-600",
+      bg: "bg-green-50",
+      desc: "baris pengamatan",
+    },
+    {
+      title: "Total Karakteristik",
+      value: stats?.total_characteristics ?? 0,
+      icon: Ruler,
       color: "text-orange-600",
       bg: "bg-orange-50",
-      desc: "menunggu approval",
+      desc: "karakteristik aktif",
     },
   ];
-
-  const alertCards = [
-    { title: "Stok Benih Rendah", value: alerts?.low_stock ?? 0, color: "text-yellow-600", bg: "bg-yellow-50", border: "border-yellow-200" },
-    { title: "Kadar Air Tinggi", value: alerts?.high_moisture ?? 0, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
-    { title: "Segera Kadaluarsa", value: alerts?.expiring_soon ?? 0, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
-  ];
-
-  const trialPieData = Object.entries(data?.trial_status_breakdown ?? {}).map(([status, count]) => ({
-    name: status.charAt(0).toUpperCase() + status.slice(1),
-    value: count,
-    color: STATUS_COLORS[status] ?? "#9ca3af",
-  }));
-
-  const expenseChartData = (data?.monthly_expenses ?? []).map((m) => ({
-    month: m.month?.slice(0, 7) ?? "",
-    total: parseFloat(m.total ?? "0"),
-  }));
 
   const activityTypeLabels: Record<string, string> = {
     planting: "Tanam", pollination: "Penyerbukan", fertilizer_application: "Pemupukan",
@@ -149,72 +107,40 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Storage Alerts */}
-      {((alerts?.low_stock ?? 0) + (alerts?.high_moisture ?? 0) + (alerts?.expiring_soon ?? 0)) > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="w-5 h-5 text-orange-500" />
-            <h2 className="font-semibold text-gray-800">Peringatan Penyimpanan</h2>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {alertCards.map((alert) => (
-              <div key={alert.title} className={cn("rounded-lg p-3 border", alert.bg, alert.border)}>
-                <p className={cn("text-2xl font-bold", alert.color)}>{alert.value}</p>
-                <p className="text-xs text-gray-600 mt-0.5">{alert.title}</p>
+      {/* Quick Navigation to Phenotyping */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+        <h2 className="font-semibold text-gray-800 mb-4">Phenotyping</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <a
+            href="/phenotyping/data-pengamatan"
+            className="flex items-center justify-between gap-3 p-4 rounded-lg border border-gray-100 hover:border-green-200 hover:bg-green-50/50 transition group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-green-50">
+                <Table2 className="w-5 h-5 text-green-600" />
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Monthly Expenses Chart */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <Wallet className="w-5 h-5 text-blue-500" />
-            <h2 className="font-semibold text-gray-800">Pengeluaran 6 Bulan Terakhir</h2>
-          </div>
-          {expenseChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={expenseChartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}jt`} />
-                <Tooltip formatter={(v) => formatCurrency(Number(v || 0))} />
-                <Bar dataKey="total" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">
-              Belum ada data pengeluaran
+              <div>
+                <p className="text-sm font-medium text-gray-800">Data Pengamatan</p>
+                <p className="text-xs text-gray-400 mt-0.5">Entri data pengamatan per plot/replikasi</p>
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Trial Status Pie */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-5">
-            <TrendingUp className="w-5 h-5 text-green-500" />
-            <h2 className="font-semibold text-gray-800">Status Trial</h2>
-          </div>
-          {trialPieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie data={trialPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                  {trialPieData.map((entry, i) => (
-                    <Cell key={i} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-48 flex items-center justify-center text-gray-400 text-sm">
-              Belum ada data trial
+            <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-green-600 transition flex-shrink-0" />
+          </a>
+          <a
+            href="/phenotyping/data-rata-rata"
+            className="flex items-center justify-between gap-3 p-4 rounded-lg border border-gray-100 hover:border-green-200 hover:bg-green-50/50 transition group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-green-50">
+                <Sigma className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-800">Data Rata-Rata</p>
+                <p className="text-xs text-gray-400 mt-0.5">Rata-rata nilai per Genotipe × Environment</p>
+              </div>
             </div>
-          )}
+            <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-green-600 transition flex-shrink-0" />
+          </a>
         </div>
       </div>
 

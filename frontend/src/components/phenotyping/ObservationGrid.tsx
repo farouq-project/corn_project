@@ -81,7 +81,7 @@ function EditableCell({
         const rounded = num !== null ? Number(num.toFixed(decimalPlaces)) : null;
         if (rounded !== (value ?? null)) onCommit(rounded);
       }}
-      className="w-20 px-1.5 py-1 text-right text-sm border border-transparent rounded focus:border-green-400 focus:outline-none focus:bg-green-50 bg-transparent hover:bg-gray-50"
+      className="w-16 md:w-20 px-1.5 py-2 md:py-1 text-right text-sm border border-transparent rounded focus:border-green-400 focus:outline-none focus:bg-green-50 bg-transparent hover:bg-gray-50"
     />
   );
 }
@@ -157,7 +157,9 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
 
   return (
     <div className="space-y-2">
-      <div className="flex justify-end relative">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-gray-400 md:hidden">Geser tabel ke samping untuk melihat kolom lainnya</p>
+        <div className="flex justify-end relative ml-auto">
         <button
           onClick={() => setShowColumnMenu((v) => !v)}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition"
@@ -167,7 +169,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
         </button>
 
         {showColumnMenu && (
-          <div className="absolute right-0 top-9 z-20 w-64 max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2">
+          <div className="absolute right-0 top-9 z-20 w-64 max-w-[80vw] max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2">
             {table.getAllLeafColumns().map((column) => {
               const isPinned = column.getIsPinned();
               return (
@@ -193,9 +195,10 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
             })}
           </div>
         )}
+        </div>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-gray-200 max-h-[70vh]">
+      <div className="overflow-auto rounded-lg border border-gray-200 max-h-[60vh] md:max-h-[70vh]">
         <table className="min-w-full border-separate border-spacing-0 text-sm">
           <thead className="bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (

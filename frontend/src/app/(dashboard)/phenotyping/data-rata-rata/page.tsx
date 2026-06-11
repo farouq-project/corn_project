@@ -51,12 +51,12 @@ export default function DataRataRataPage() {
         description="Rata-rata nilai pengamatan per Genotipe × Environment × Karakteristik (R1/R2/R3/Rata-rata)"
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
         <label className="text-sm text-gray-600">Environment:</label>
         <select
           value={environmentFilter}
           onChange={(e) => setEnvironmentFilter(e.target.value)}
-          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-full sm:w-auto"
         >
           <option value="">Semua Environment</option>
           {environments.map((env) => (
@@ -78,7 +78,8 @@ export default function DataRataRataPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
-          <div className="overflow-auto max-h-[75vh] rounded-xl">
+          <p className="px-3 pt-2 text-[11px] text-gray-400 md:hidden">Geser tabel ke samping untuk melihat kolom lainnya</p>
+          <div className="overflow-auto max-h-[60vh] md:max-h-[75vh] rounded-xl">
             <table className="min-w-full border-separate border-spacing-0 text-sm">
               <thead className="bg-gray-50">
                 <tr>

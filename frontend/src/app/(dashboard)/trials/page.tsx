@@ -47,7 +47,7 @@ const statusColors: Record<string, string> = {
 export default function TrialsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrial, setEditingTrial] = useState<Trial | null>(null);
-  const [viewMode, setViewMode] = useState<"table" | "cards">("cards");
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({

@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Search, User } from "lucide-react";
+import { Bell, LogOut, Menu, Search, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/authStore";
 import { authService } from "@/services/auth.service";
 import { cn } from "@/lib/utils";
 
-export function TopBar() {
+interface TopBarProps {
+  onMenuClick?: () => void;
+}
+
+export function TopBar({ onMenuClick }: TopBarProps) {
   const { user, logout } = useAuthStore();
   const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
@@ -36,19 +40,28 @@ export function TopBar() {
   const roleInfo = roleBadge[currentRole] ?? { label: currentRole, color: "bg-gray-100 text-gray-700" };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 flex-shrink-0 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className="relative">
+    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 md:px-6 flex-shrink-0 shadow-sm gap-2">
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        {/* Mobile menu toggle */}
+        <button
+          onClick={onMenuClick}
+          className="md:hidden p-2 -ml-1 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 flex-shrink-0"
+          aria-label="Buka menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+
+        <div className="relative min-w-0 flex-1 max-w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             placeholder="Cari data..."
-            className="pl-9 pr-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-green-500 w-64 transition"
+            className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-green-500 transition"
           />
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
         {/* Role badge */}
         <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium hidden md:inline-flex", roleInfo.color)}>
           {roleInfo.label}
