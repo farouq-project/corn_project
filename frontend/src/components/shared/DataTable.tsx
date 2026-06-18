@@ -7,8 +7,9 @@ import {
   getPaginationRowModel,
   flexRender,
   type ColumnDef,
+  type RowSelectionState,
 } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,11 @@ interface DataTableProps<TData> {
   searchPlaceholder?: string;
   isLoading?: boolean;
   emptyMessage?: string;
+  /** When provided, enables checkboxes and shows a bulk-delete toolbar */
+  onBulkDelete?: (selectedRows: TData[]) => void | Promise<void>;
+  isBulkDeleting?: boolean;
+  /** Must return a stable unique string per row (e.g. String(row.id)) */
+  getRowId?: (row: TData) => string;
 }
 
 export function DataTable<TData>({
@@ -26,30 +32,99 @@ export function DataTable<TData>({
   searchPlaceholder = "Cari...",
   isLoading,
   emptyMessage = "Tidak ada data",
+  onBulkDelete,
+  isBulkDeleting,
+  getRowId,
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+
+  const selectable = !!onBulkDelete;
+
+  const checkboxCol: ColumnDef<TData, unknown> = {
+    id: "__select__",
+    header: ({ table }) => (
+      <input
+        type="checkbox"
+        checked={table.getIsAllPageRowsSelected()}
+        ref={(el) => { if (el) el.indeterminate = table.getIsSomePageRowsSelected(); }}
+        onChange={table.getToggleAllPageRowsSelectedHandler()}
+        className="accent-green-600 w-4 h-4 cursor-pointer"
+        aria-label="Pilih semua"
+      />
+    ),
+    cell: ({ row }) => (
+      <input
+        type="checkbox"
+        checked={row.getIsSelected()}
+        onChange={row.getToggleSelectedHandler()}
+        onClick={(e) => e.stopPropagation()}
+        className="accent-green-600 w-4 h-4 cursor-pointer"
+        aria-label="Pilih baris"
+      />
+    ),
+    size: 36,
+  };
+
+  const allColumns = selectable ? [checkboxCol, ...columns] : columns;
 
   const table = useReactTable({
     data,
-    columns,
-    state: { globalFilter },
+    columns: allColumns,
+    state: { globalFilter, rowSelection },
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    enableRowSelection: selectable,
+    getRowId: getRowId ?? ((row, idx) => String((row as { id?: unknown }).id ?? idx)),
     initialState: { pagination: { pageSize: 10 } },
   });
 
+  const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original);
+  const selectedCount = selectedRows.length;
+
+  const handleBulkDelete = async () => {
+    if (!onBulkDelete || selectedCount === 0) return;
+    if (!confirm(`Hapus ${selectedCount} item terpilih? Tindakan ini tidak dapat dibatalkan.`)) return;
+    await onBulkDelete(selectedRows);
+    setRowSelection({});
+  };
+
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={globalFilter ?? ""}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder={searchPlaceholder}
-          className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full max-w-xs focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-        />
+      {/* Toolbar */}
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={globalFilter ?? ""}
+            onChange={(e) => setGlobalFilter(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          />
+        </div>
+
+        {selectable && selectedCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg">
+            <span className="text-xs font-medium text-red-700">{selectedCount} dipilih</span>
+            <button
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {isBulkDeleting ? "Menghapus..." : "Hapus"}
+            </button>
+            <button
+              onClick={() => setRowSelection({})}
+              className="text-xs text-red-500 hover:text-red-700 transition"
+            >
+              Batal
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -60,7 +135,10 @@ export function DataTable<TData>({
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                    className={cn(
+                      "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider",
+                      header.id === "__select__" && "w-10 px-3"
+                    )}
                   >
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
@@ -72,7 +150,7 @@ export function DataTable<TData>({
             {isLoading ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i}>
-                  {columns.map((_, j) => (
+                  {allColumns.map((_, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-4 bg-gray-100 rounded animate-pulse" />
                     </td>
@@ -81,15 +159,24 @@ export function DataTable<TData>({
               ))
             ) : table.getRowModel().rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10 text-center text-gray-400 text-sm">
+                <td colSpan={allColumns.length} className="px-4 py-10 text-center text-gray-400 text-sm">
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50 transition">
+                <tr
+                  key={row.id}
+                  className={cn("hover:bg-gray-50 transition", row.getIsSelected() && "bg-green-50")}
+                >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+                    <td
+                      key={cell.id}
+                      className={cn(
+                        "px-4 py-3 text-sm text-gray-700 whitespace-nowrap",
+                        cell.column.id === "__select__" && "px-3 w-10"
+                      )}
+                    >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -106,23 +193,18 @@ export function DataTable<TData>({
           Menampilkan {table.getState().pagination.pageIndex * table.getState().pagination.pageSize + 1}–
           {Math.min((table.getState().pagination.pageIndex + 1) * table.getState().pagination.pageSize, table.getFilteredRowModel().rows.length)} dari{" "}
           {table.getFilteredRowModel().rows.length} data
+          {selectable && selectedCount > 0 && <span className="ml-2 text-green-600 font-medium">({selectedCount} dipilih)</span>}
         </p>
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="p-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition"
-          >
+          <button onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}
+            className="p-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition">
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="text-xs text-gray-600 px-2">
             Hal {table.getState().pagination.pageIndex + 1} / {table.getPageCount()}
           </span>
-          <button
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="p-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition"
-          >
+          <button onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}
+            className="p-1.5 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>

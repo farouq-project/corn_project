@@ -99,6 +99,24 @@ export default function MasterDataPage() {
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 
+  const bulkDeleteSeasonsMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/seasons/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["seasons"] }); toast.success("Musim terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian musim gagal dihapus"),
+  });
+
+  const bulkDeleteLocationsMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/locations/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["locations"] }); toast.success("Lokasi terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian lokasi gagal dihapus"),
+  });
+
+  const bulkDeleteStorageMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/storage/units/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["storage-units-all"] }); toast.success("Unit penyimpanan terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian unit penyimpanan gagal dihapus (mungkin masih memiliki inventaris)"),
+  });
+
   const tabs = [
     { id: "seasons" as TabType, label: "Musim Tanam", icon: Calendar, count: (seasons as unknown as { data: Season[] })?.data?.length ?? 0 },
     { id: "locations" as TabType, label: "Lokasi", icon: Map, count: (locations as unknown as { data: Location[] })?.data?.length ?? 0 },
@@ -171,6 +189,9 @@ export default function MasterDataPage() {
               isLoading={seasonsLoading}
               searchPlaceholder="Cari musim..."
               emptyMessage="Belum ada data musim"
+              getRowId={(row) => String(row.id)}
+              onBulkDelete={(rows) => bulkDeleteSeasonsMutation.mutate(rows.map((r) => r.id))}
+              isBulkDeleting={bulkDeleteSeasonsMutation.isPending}
             />
           )}
           {activeTab === "locations" && (
@@ -180,6 +201,9 @@ export default function MasterDataPage() {
               isLoading={locationsLoading}
               searchPlaceholder="Cari lokasi..."
               emptyMessage="Belum ada data lokasi"
+              getRowId={(row) => String(row.id)}
+              onBulkDelete={(rows) => bulkDeleteLocationsMutation.mutate(rows.map((r) => r.id))}
+              isBulkDeleting={bulkDeleteLocationsMutation.isPending}
             />
           )}
           {activeTab === "storage_units" && (
@@ -189,6 +213,9 @@ export default function MasterDataPage() {
               isLoading={unitsLoading}
               searchPlaceholder="Cari unit penyimpanan..."
               emptyMessage="Belum ada unit penyimpanan"
+              getRowId={(row) => String(row.id)}
+              onBulkDelete={(rows) => bulkDeleteStorageMutation.mutate(rows.map((r) => r.id))}
+              isBulkDeleting={bulkDeleteStorageMutation.isPending}
             />
           )}
         </div>

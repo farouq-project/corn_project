@@ -86,6 +86,7 @@ Route::prefix('v1')->group(function () {
             Route::post('units', [StorageController::class, 'unitStore']);
             Route::get('units/{unit}', [StorageController::class, 'unitShow']);
             Route::put('units/{unit}', [StorageController::class, 'unitUpdate']);
+            Route::delete('units/{unit}', [StorageController::class, 'unitDestroy']);
             Route::post('units/{unit}/readings', [StorageController::class, 'recordReading']);
             Route::get('units/{unit}/readings', [StorageController::class, 'readingHistory']);
 

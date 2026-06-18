@@ -72,6 +72,12 @@ export default function EnvironmentsPage() {
     onError: (e) => toast.error(getApiErrorMessage(e)),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/environments/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["environments"] }); toast.success("Environment terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian environment gagal dihapus (mungkin masih memiliki data pengamatan)"),
+  });
+
   const openCreate = () => { setEditing(null); reset({}); setIsModalOpen(true); };
   const openEdit = (env: Environment) => {
     setEditing(env);
@@ -191,6 +197,9 @@ export default function EnvironmentsPage() {
           <DataTable data={envs} columns={columns} isLoading={isLoading}
             searchPlaceholder="Cari kode environment..."
             emptyMessage="Belum ada environment"
+            getRowId={(row) => String(row.id)}
+            onBulkDelete={(rows) => bulkDeleteMutation.mutate(rows.map((r) => r.id))}
+            isBulkDeleting={bulkDeleteMutation.isPending}
           />
         </div>
       ) : isLoading ? (

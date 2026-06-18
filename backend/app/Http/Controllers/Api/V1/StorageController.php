@@ -86,6 +86,18 @@ class StorageController extends Controller
         return response()->json($unit);
     }
 
+    public function unitDestroy(StorageUnit $unit): JsonResponse
+    {
+        if ($unit->seedInventories()->exists()) {
+            return response()->json(['message' => 'Unit tidak dapat dihapus karena masih memiliki inventaris benih.'], 422);
+        }
+
+        AuditService::logDeleted($unit);
+        $unit->delete();
+
+        return response()->json(['message' => 'Unit penyimpanan berhasil dihapus.']);
+    }
+
     // Seed Inventories
     public function inventoryIndex(Request $request): JsonResponse
     {

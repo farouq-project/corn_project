@@ -60,12 +60,18 @@ export default function PengamatanPage() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/v1/phenotyping/characteristics/${id}`),
-    onSuccess: (_, id) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["characteristics-all"] });
       queryClient.invalidateQueries({ queryKey: ["characteristics"] });
       toast.success("Karakter dihapus (atau dinonaktifkan jika masih digunakan)");
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/phenotyping/characteristics/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["characteristics-all"] }); queryClient.invalidateQueries({ queryKey: ["characteristics"] }); toast.success("Karakter terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian karakter gagal dihapus"),
   });
 
   const openCreate = () => {
@@ -183,6 +189,9 @@ export default function PengamatanPage() {
           isLoading={isLoading}
           searchPlaceholder="Cari kode atau nama karakter..."
           emptyMessage="Belum ada karakter pengamatan. Klik Tambah Karakter untuk memulai."
+          getRowId={(row) => String(row.id)}
+          onBulkDelete={(rows) => bulkDeleteMutation.mutate(rows.map((r) => r.id))}
+          isBulkDeleting={bulkDeleteMutation.isPending}
         />
       </div>
 

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Repeat2, Edit2, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Repeat2, Edit2, X, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -13,6 +13,7 @@ export default function UlanganPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState(3);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -31,6 +32,20 @@ export default function UlanganPage() {
     },
     onError: (e) => toast.error(getApiErrorMessage(e)),
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => api.delete(`/v1/trials/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["trials"] }); setSelected(new Set()); toast.success("Trial terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian trial gagal dihapus"),
+  });
+
+  const toggleSelect = (id: number) => {
+    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  };
+
+  const toggleSelectAll = () => {
+    setSelected((prev) => prev.size === trials.length ? new Set() : new Set(trials.map((t) => t.id)));
+  };
 
   const toggleExpand = (id: number) => {
     setExpanded((prev) => {
@@ -53,6 +68,22 @@ export default function UlanganPage() {
         description="Jumlah ulangan per project/trial. Menentukan R1, R2, ..., Rn yang tersedia saat entri Data Pengamatan."
       />
 
+      {/* Bulk-delete toolbar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-red-50 border border-red-200 rounded-xl">
+          <span className="text-xs font-medium text-red-700">{selected.size} trial dipilih</span>
+          <button
+            onClick={() => { if (confirm(`Hapus ${selected.size} trial terpilih?`)) bulkDeleteMutation.mutate(Array.from(selected)); }}
+            disabled={bulkDeleteMutation.isPending}
+            className="flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white text-xs font-medium rounded hover:bg-red-700 transition disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            {bulkDeleteMutation.isPending ? "Menghapus..." : "Hapus"}
+          </button>
+          <button onClick={() => setSelected(new Set())} className="text-xs text-red-500 hover:text-red-700">Batal</button>
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
         {isLoading ? (
           <div className="p-8 space-y-3">
@@ -65,6 +96,17 @@ export default function UlanganPage() {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
+            {/* Select-all header */}
+            <div className="flex items-center gap-3 px-5 py-2 bg-gray-50 border-b border-gray-100">
+              <input
+                type="checkbox"
+                checked={selected.size === trials.length && trials.length > 0}
+                ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < trials.length; }}
+                onChange={toggleSelectAll}
+                className="accent-green-600 w-4 h-4 cursor-pointer"
+              />
+              <span className="text-xs text-gray-400">Pilih semua ({trials.length} trial)</span>
+            </div>
             {trials.map((trial) => {
               const isExp = expanded.has(trial.id);
               const reps = trial.replications ?? 3;
@@ -72,7 +114,13 @@ export default function UlanganPage() {
 
               return (
                 <div key={trial.id}>
-                  <div className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50/50 transition">
+                  <div className={cn("flex items-center gap-3 px-5 py-4 hover:bg-gray-50/50 transition", selected.has(trial.id) && "bg-green-50")}>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(trial.id)}
+                      onChange={() => toggleSelect(trial.id)}
+                      className="accent-green-600 w-4 h-4 cursor-pointer flex-shrink-0"
+                    />
                     <button
                       onClick={() => toggleExpand(trial.id)}
                       className="text-gray-400 hover:text-gray-600 transition flex-shrink-0"

@@ -70,6 +70,12 @@ export default function TrialsPage() {
     defaultValues: { status: "planned", layout_design: "RCBD", replications: 3 },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => trialService.delete(id))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["trials"] }); toast.success("Trial terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian atau semua trial gagal dihapus"),
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: FormData) => trialService.create(data),
     onSuccess: () => {
@@ -271,6 +277,9 @@ export default function TrialsPage() {
             isLoading={isLoading}
             searchPlaceholder="Cari kode atau nama trial..."
             emptyMessage="Belum ada trial"
+            getRowId={(row) => String(row.id)}
+            onBulkDelete={(rows) => bulkDeleteMutation.mutate(rows.map((r) => r.id))}
+            isBulkDeleting={bulkDeleteMutation.isPending}
           />
         </div>
       )}

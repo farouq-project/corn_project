@@ -95,6 +95,12 @@ export default function GenotypesPage() {
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map((id) => genotypeService.delete(id))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["genotypes"] }); toast.success("Genotipe terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian genotipe gagal dihapus"),
+  });
+
   const handleBulkError = (error: unknown) => {
     if (axios.isAxiosError(error)) {
       const data = error.response?.data as { message?: string; errors?: Record<string, string[]> } | undefined;
@@ -282,6 +288,9 @@ export default function GenotypesPage() {
           isLoading={isLoading}
           searchPlaceholder="Cari kode atau nama genotipe..."
           emptyMessage="Belum ada genotipe. Klik tombol Tambah untuk memulai."
+          getRowId={(row) => String(row.id)}
+          onBulkDelete={(rows) => bulkDeleteMutation.mutate(rows.map((r) => r.id))}
+          isBulkDeleting={bulkDeleteMutation.isPending}
         />
       </div>
 

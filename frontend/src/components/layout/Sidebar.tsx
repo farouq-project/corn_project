@@ -47,14 +47,9 @@ const navigation = [
     ],
   },
   {
-    label: "Percobaan & Trial",
-    items: [
-      { name: "Manajemen Trial", href: "/trials", icon: BookOpen },
-    ],
-  },
-  {
     label: "Master Data",
     items: [
+      { name: "Manajemen Trial", href: "/trials", icon: BookOpen },
       { name: "Pengamatan", href: "/master-data/pengamatan", icon: Microscope },
       { name: "Genotipe", href: "/genotypes", icon: Dna },
       { name: "Lingkungan (Env)", href: "/environments", icon: MapPin },
