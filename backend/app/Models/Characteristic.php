@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Characteristic extends Model
 {
     protected $fillable = [
-        'code', 'name', 'unit', 'group',
+        'code', 'name', 'unit', 'group', 'method_description',
         'display_order', 'decimal_places', 'is_active',
     ];
 

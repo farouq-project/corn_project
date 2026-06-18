@@ -5,13 +5,8 @@ namespace App\Services\Import;
 use App\Models\Characteristic;
 use App\Models\Environment;
 use App\Models\Genotype;
+use App\Models\ObservationRecord;
 
-/**
- * Phase 2 scaffolding: row-level validation for the phenotyping
- * observation import pipeline. Mirrors ValidationEngine's shape
- * (pre-loaded lookup caches + validate*Row returning a structured result)
- * so the same staging/preview/confirm UI patterns can be reused.
- */
 class PhenotypingValidationEngine
 {
     private array $genotypeCache = [];
@@ -36,36 +31,81 @@ class PhenotypingValidationEngine
 
         Characteristic::active()
             ->get(['id', 'code', 'decimal_places'])
-            ->each(fn($c) => $this->characteristicCache[strtoupper($c->code)] = ['id' => $c->id, 'decimal_places' => $c->decimal_places]);
+            ->each(fn($c) => $this->characteristicCache[strtoupper($c->code)] = [
+                'id' => $c->id,
+                'decimal_places' => $c->decimal_places,
+            ]);
     }
 
     /**
      * Validate a single normalized staging row.
-     *
-     * @param  array $norm  Normalized fields: plot_no, genotype_code, environment_code,
-     *                       replication, values (characteristic_code => float|null)
-     * @param  array $raw   Raw spreadsheet row, for error messages
-     * @param  int   $rowNumber
-     * @return array ['status' => 'valid'|'warning'|'invalid',
-     *                'errors' => [...], 'warnings' => [...],
-     *                'resolved' => ['genotype_id' => ?int, 'environment_id' => ?int]]
-     *
-     * TODO Phase 2: implement full validation:
-     *  - required fields present (plot_no, genotype_code, environment_code, replication)
-     *  - genotype_code / environment_code resolve via genotypeCache / environmentCache
-     *  - replication is a positive integer
-     *  - characteristic values within plausible ranges (warning, not error)
-     *  - duplicate (environment_id, season_id, plot_no, replication) within file or DB
+     * Returns ['status' => 'valid'|'warning'|'invalid', 'errors' => [...], 'warnings' => [...], 'resolved' => [...]]
      */
     public function validateObservationRow(array $norm, array $raw, int $rowNumber): array
     {
+        $errors = [];
+        $warnings = [];
+
+        // Required: plot_no
+        if (blank($norm['plot_no'] ?? null)) {
+            $errors[] = "Baris {$rowNumber}: No Plot kosong.";
+        }
+
+        // Required: genotype_code must resolve
+        $genotypeId = null;
+        if (blank($norm['genotype_code'] ?? null)) {
+            $errors[] = "Baris {$rowNumber}: Kode Genotipe kosong.";
+        } else {
+            $genotypeId = $this->genotypeCache[strtoupper($norm['genotype_code'])] ?? null;
+            if (!$genotypeId) {
+                $errors[] = "Baris {$rowNumber}: Genotipe '{$norm['genotype_code']}' tidak ditemukan.";
+            }
+        }
+
+        // Required: environment_code must resolve
+        $environmentId = null;
+        if (blank($norm['environment_code'] ?? null)) {
+            $errors[] = "Baris {$rowNumber}: Environment kosong.";
+        } else {
+            $environmentId = $this->environmentCache[strtoupper($norm['environment_code'])] ?? null;
+            if (!$environmentId) {
+                $errors[] = "Baris {$rowNumber}: Environment '{$norm['environment_code']}' tidak ditemukan.";
+            }
+        }
+
+        // Required: replication must be positive integer
+        $replication = $norm['replication'] ?? null;
+        if ($replication === null || $replication < 1) {
+            $errors[] = "Baris {$rowNumber}: Ulangan (R) harus berupa bilangan bulat positif.";
+        }
+
+        // Warn about characteristic codes not in master data
+        foreach (array_keys($norm['values'] ?? []) as $code) {
+            if (!isset($this->characteristicCache[strtoupper($code)])) {
+                $warnings[] = "Baris {$rowNumber}: Kolom '{$code}' tidak cocok dengan karakter aktif manapun — akan diabaikan.";
+            }
+        }
+
+        // Warn about duplicate in DB
+        if ($genotypeId && $environmentId && $replication && $norm['plot_no']) {
+            $existsInDb = ObservationRecord::where('environment_id', $environmentId)
+                ->where('plot_no', $norm['plot_no'])
+                ->where('replication', $replication)
+                ->exists();
+            if ($existsInDb) {
+                $warnings[] = "Baris {$rowNumber}: Plot '{$norm['plot_no']}' R{$replication} sudah ada — nilai akan ditimpa.";
+            }
+        }
+
+        $status = count($errors) > 0 ? 'invalid' : (count($warnings) > 0 ? 'warning' : 'valid');
+
         return [
-            'status' => 'pending',
-            'errors' => [],
-            'warnings' => [],
+            'status' => $status,
+            'errors' => $errors,
+            'warnings' => $warnings,
             'resolved' => [
-                'genotype_id' => null,
-                'environment_id' => null,
+                'genotype_id' => $genotypeId,
+                'environment_id' => $environmentId,
             ],
         ];
     }

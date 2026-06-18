@@ -354,6 +354,7 @@ export interface Characteristic {
   name: string;
   unit?: string;
   group?: string;
+  method_description?: string;
   display_order: number;
   decimal_places: number;
   is_active: boolean;

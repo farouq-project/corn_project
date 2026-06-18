@@ -3,22 +3,19 @@
 namespace App\Services\Import;
 
 use App\Models\Characteristic;
+use App\Models\Environment;
+use App\Models\Genotype;
+use App\Models\ObservationImportStaging;
+use App\Models\ObservationRecord;
+use App\Models\ObservationValue;
 use App\Models\PhenotypingImportBatch;
+use App\Services\AuditService;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
-/**
- * Phase 2 scaffolding: bulk import pipeline for "Data Pengamatan"
- * spreadsheets into observation_records / observation_values.
- *
- * Follows the same 4-step flow as InventoryImportService:
- *   upload & parse -> normalize & validate -> preview -> confirm/rollback
- *
- * See backend/docs/PHENOTYPING_IMPORT_DESIGN.md for the full design.
- * Only uploadAndParse() (batch creation + raw row capture) and the
- * Excel template generation are implemented in this phase; the
- * remaining steps are marked TODO Phase 2.
- */
 class PhenotypingImportService
 {
     public function __construct(
@@ -26,15 +23,8 @@ class PhenotypingImportService
         private PhenotypingValidationEngine $validator,
     ) {}
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // STEP 1: UPLOAD & PARSE
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── STEP 1: UPLOAD & PARSE ─────────────────────────────────────────────────
 
-    /**
-     * Accept an uploaded "Data Pengamatan" Excel file, store it, and
-     * register a batch. Row parsing into observation_import_staging
-     * is TODO Phase 2.
-     */
     public function uploadAndParse(UploadedFile $file, int $userId): PhenotypingImportBatch
     {
         $fileHash = hash_file('sha256', $file->getPathname());
@@ -51,80 +41,276 @@ class PhenotypingImportService
             'uploaded_by' => $userId,
         ]);
 
-        // TODO Phase 2: parse Excel rows into observation_import_staging.
-        // Expected columns: No Plot | Kode Gen | Gen | Environment | R | <one column per active characteristic code>
-        // For each data row:
-        //   - capture raw_data as {header => cell value}
-        //   - create ObservationImportStaging row with status=pending
-
-        $batch->update(['status' => 'parsed']);
+        try {
+            $this->parseFile($batch, $file);
+            $batch->update(['status' => 'parsed']);
+        } catch (\Throwable $e) {
+            $batch->update(['status' => 'failed', 'status_message' => $e->getMessage()]);
+            throw $e;
+        }
 
         return $batch->refresh();
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // STEP 2: NORMALIZE & VALIDATE
-    // ──────────────────────────────────────────────────────────────────────────
+    private function parseFile(PhenotypingImportBatch $batch, UploadedFile $file): void
+    {
+        $spreadsheet = IOFactory::load($file->getPathname());
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, true, false);
 
-    /**
-     * TODO Phase 2: for each pending staging row, normalize raw_data via
-     * PhenotypingNormalizationService, validate via PhenotypingValidationEngine,
-     * write normalized_data/status/errors/warnings back to the row, and
-     * update batch row counters + status=validated.
-     */
+        if (empty($rows)) return;
+
+        $headers = array_map(fn($h) => trim((string) $h), $rows[0]);
+        $totalRows = 0;
+        $staging = [];
+
+        foreach (array_slice($rows, 1) as $row) {
+            // Skip blank rows
+            $values = array_map(fn($v) => $v === null ? '' : trim((string) $v), $row);
+            if (implode('', $values) === '') continue;
+
+            $totalRows++;
+            $rawData = array_combine($headers, $values);
+            $staging[] = [
+                'import_batch_id' => $batch->id,
+                'row_number' => $totalRows + 1,
+                'raw_data' => json_encode($rawData),
+                'normalized_data' => null,
+                'status' => 'pending',
+                'errors' => null,
+                'warnings' => null,
+                'imported_observation_record_id' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        foreach (array_chunk($staging, 500) as $chunk) {
+            ObservationImportStaging::insert($chunk);
+        }
+
+        $batch->update(['total_rows' => $totalRows]);
+    }
+
+    // ── STEP 2: NORMALIZE & VALIDATE ──────────────────────────────────────────
+
     public function normalizeAndValidate(PhenotypingImportBatch $batch): PhenotypingImportBatch
     {
-        return $batch;
+        $batch->update(['status' => 'validating']);
+
+        $stagingRows = ObservationImportStaging::where('import_batch_id', $batch->id)->get();
+        $validCount = $invalidCount = $warningCount = 0;
+
+        foreach ($stagingRows as $row) {
+            $raw = $row->raw_data ?? [];
+
+            $norm = [
+                'plot_no' => $this->normalizer->normalizePlotNo($raw['No Plot'] ?? $raw['no_plot'] ?? null),
+                'genotype_code' => $this->normalizer->normalizeGenotypeCode($raw['Kode Gen'] ?? $raw['kode_gen'] ?? null),
+                'genotype_name' => trim($raw['Gen'] ?? $raw['gen'] ?? ''),
+                'environment_code' => trim(strtoupper($raw['Environment'] ?? $raw['environment'] ?? '')),
+                'replication' => $this->normalizer->normalizeReplication($raw['R'] ?? $raw['r'] ?? null),
+                'values' => [],
+            ];
+
+            // Extract characteristic values from remaining columns
+            $staticKeys = ['No Plot', 'no_plot', 'Kode Gen', 'kode_gen', 'Gen', 'gen', 'Environment', 'environment', 'R', 'r'];
+            foreach ($raw as $colKey => $cellVal) {
+                if (in_array($colKey, $staticKeys, true)) continue;
+                // Strip unit in parentheses: "TT (cm)" → "TT"
+                $code = strtoupper(trim(preg_replace('/\s*\(.*\)/', '', $colKey)));
+                if ($code === '') continue;
+                $norm['values'][$code] = $this->normalizer->normalizeNumericValue($cellVal === '' ? null : $cellVal);
+            }
+
+            $result = $this->validator->validateObservationRow($norm, $raw, $row->row_number);
+
+            $row->update([
+                'normalized_data' => $norm,
+                'status' => $result['status'],
+                'errors' => $result['errors'] ?: null,
+                'warnings' => $result['warnings'] ?: null,
+            ]);
+
+            match ($result['status']) {
+                'valid' => $validCount++,
+                'warning' => $warningCount++,
+                default => $invalidCount++,
+            };
+        }
+
+        $batch->update([
+            'status' => 'validated',
+            'valid_rows' => $validCount + $warningCount,
+            'invalid_rows' => $invalidCount,
+            'warning_rows' => $warningCount,
+        ]);
+
+        return $batch->refresh();
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // STEP 3: PREVIEW
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── STEP 3: PREVIEW ───────────────────────────────────────────────────────
 
-    /**
-     * TODO Phase 2: return paginated staging rows (with status/errors/warnings)
-     * for the review UI, optionally filtered by status.
-     */
     public function getPreviewData(PhenotypingImportBatch $batch, array $filters = []): array
     {
-        return [];
+        $query = ObservationImportStaging::where('import_batch_id', $batch->id);
+
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        $perPage = $filters['per_page'] ?? 50;
+        $page = $filters['page'] ?? 1;
+
+        $paginator = $query->orderBy('row_number')->paginate($perPage, ['*'], 'page', $page);
+
+        return [
+            'batch' => $batch->only([
+                'id', 'batch_code', 'total_rows', 'valid_rows', 'invalid_rows',
+                'warning_rows', 'status', 'original_filename',
+            ]),
+            'rows' => $paginator->items(),
+            'pagination' => [
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ];
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // STEP 4: CONFIRM / ROLLBACK
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── STEP 4: CONFIRM ───────────────────────────────────────────────────────
 
-    /**
-     * TODO Phase 2: for each valid/warning staging row, create or update
-     * an ObservationRecord + ObservationValue rows inside a transaction,
-     * recording imported_observation_record_id back on the staging row.
-     */
     public function confirmImport(PhenotypingImportBatch $batch, int $confirmedByUserId): PhenotypingImportBatch
     {
-        return $batch;
+        $batch->update(['status' => 'importing']);
+
+        $characteristicCache = Characteristic::active()
+            ->get(['id', 'code', 'decimal_places'])
+            ->keyBy(fn($c) => strtoupper($c->code));
+
+        $environmentCache = Environment::pluck('id', 'environment_code')
+            ->mapWithKeys(fn($id, $code) => [strtoupper($code) => $id]);
+
+        $genotypeCache = [];
+        Genotype::whereIn('status', ['active', 'inactive'])
+            ->get(['id', 'genotype_code', 'old_code'])
+            ->each(function ($g) use (&$genotypeCache) {
+                $genotypeCache[strtoupper($g->genotype_code)] = $g->id;
+                if ($g->old_code) {
+                    $genotypeCache[strtoupper($g->old_code)] = $g->id;
+                }
+            });
+
+        $rows = ObservationImportStaging::where('import_batch_id', $batch->id)
+            ->whereIn('status', ['valid', 'warning'])
+            ->get();
+
+        $importedCount = 0;
+
+        DB::transaction(function () use ($rows, $characteristicCache, $environmentCache, $genotypeCache, $batch, $confirmedByUserId, &$importedCount) {
+            foreach ($rows as $row) {
+                $norm = $row->normalized_data;
+                if (empty($norm)) continue;
+
+                $genotypeId = $genotypeCache[strtoupper($norm['genotype_code'] ?? '')] ?? null;
+                $environmentId = $environmentCache[strtoupper($norm['environment_code'] ?? '')] ?? null;
+                if (!$genotypeId || !$environmentId) continue;
+
+                $environment = Environment::find($environmentId);
+
+                // Upsert the observation record
+                $record = ObservationRecord::firstOrCreate(
+                    [
+                        'environment_id' => $environmentId,
+                        'season_id' => $environment?->season_id,
+                        'plot_no' => $norm['plot_no'],
+                        'replication' => $norm['replication'],
+                    ],
+                    [
+                        'record_code' => 'OBS-' . strtoupper(Str::random(10)),
+                        'genotype_id' => $genotypeId,
+                        'recorded_by' => $confirmedByUserId,
+                    ]
+                );
+
+                // Upsert characteristic values
+                foreach ($norm['values'] ?? [] as $code => $value) {
+                    $char = $characteristicCache[strtoupper($code)] ?? null;
+                    if (!$char) continue;
+
+                    ObservationValue::updateOrCreate(
+                        [
+                            'observation_record_id' => $record->id,
+                            'characteristic_id' => $char->id,
+                        ],
+                        ['value' => $value]
+                    );
+                }
+
+                $row->update([
+                    'status' => 'valid',
+                    'imported_observation_record_id' => $record->id,
+                ]);
+
+                $importedCount++;
+            }
+        });
+
+        $batch->update([
+            'status' => 'completed',
+            'imported_rows' => $importedCount,
+            'confirmed_by' => $confirmedByUserId,
+            'confirmed_at' => now(),
+            'import_completed_at' => now(),
+        ]);
+
+        AuditService::logAction('phenotyping_import_confirmed', $batch, [
+            'imported_rows' => $importedCount,
+            'batch_code' => $batch->batch_code,
+        ]);
+
+        return $batch->refresh();
     }
 
-    /**
-     * TODO Phase 2: soft-delete all observation_records created by this
-     * batch (via imported_observation_record_id) and mark the batch
-     * status=rolled_back.
-     */
+    // ── STEP 5: ROLLBACK ──────────────────────────────────────────────────────
+
     public function rollback(PhenotypingImportBatch $batch, int $rolledBackByUserId): array
     {
-        return [];
+        $importedIds = ObservationImportStaging::where('import_batch_id', $batch->id)
+            ->whereNotNull('imported_observation_record_id')
+            ->pluck('imported_observation_record_id');
+
+        $deletedCount = 0;
+
+        DB::transaction(function () use ($importedIds, &$deletedCount) {
+            foreach ($importedIds as $recordId) {
+                $record = ObservationRecord::find($recordId);
+                if ($record) {
+                    $record->values()->delete();
+                    $record->delete();
+                    $deletedCount++;
+                }
+            }
+        });
+
+        $batch->update([
+            'status' => 'rolled_back',
+            'is_rolled_back' => true,
+            'rolled_back_at' => now(),
+            'rolled_back_by' => $rolledBackByUserId,
+        ]);
+
+        AuditService::logAction('phenotyping_import_rolled_back', $batch, [
+            'deleted_records' => $deletedCount,
+            'batch_code' => $batch->batch_code,
+        ]);
+
+        return ['deleted_records' => $deletedCount, 'batch_code' => $batch->batch_code];
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // TEMPLATE GENERATION (implemented now)
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── TEMPLATE GENERATION ───────────────────────────────────────────────────
 
-    /**
-     * Build the "Data Pengamatan" import template: static columns
-     * (No Plot, Kode Gen, Gen, Environment, R) + one column per
-     * active characteristic, ordered by display_order.
-     *
-     * @return array<int, string> header row
-     */
     public function buildTemplateHeaders(): array
     {
         $headers = ['No Plot', 'Kode Gen', 'Gen', 'Environment', 'R'];

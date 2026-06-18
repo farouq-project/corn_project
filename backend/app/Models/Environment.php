@@ -67,6 +67,11 @@ class Environment extends Model
         return $this->hasMany(DiseaseEvaluation::class);
     }
 
+    public function observationRecords()
+    {
+        return $this->hasMany(ObservationRecord::class);
+    }
+
     public function soilAnalyses()
     {
         return $this->hasMany(SoilAnalysis::class);

@@ -103,6 +103,7 @@ Route::prefix('v1')->group(function () {
         Route::post('environments', [EnvironmentController::class, 'store']);
         Route::get('environments/{environment}', [EnvironmentController::class, 'show']);
         Route::put('environments/{environment}', [EnvironmentController::class, 'update']);
+        Route::delete('environments/{environment}', [EnvironmentController::class, 'destroy']);
         Route::get('environments/{environment}/soil-analyses', [EnvironmentController::class, 'soilAnalyses']);
         Route::post('environments/{environment}/soil-analyses', [EnvironmentController::class, 'storeSoilAnalysis']);
 
@@ -176,6 +177,8 @@ Route::prefix('v1')->group(function () {
             Route::post('characteristics', [CharacteristicController::class, 'store']);
             Route::put('characteristics/{characteristic}', [CharacteristicController::class, 'update']);
             Route::delete('characteristics/{characteristic}', [CharacteristicController::class, 'destroy']);
+            Route::get('characteristics/import/template', [CharacteristicController::class, 'downloadTemplate']);
+            Route::post('characteristics/import', [CharacteristicController::class, 'import']);
 
             Route::get('records', [ObservationRecordController::class, 'index']);
             Route::post('records', [ObservationRecordController::class, 'store']);

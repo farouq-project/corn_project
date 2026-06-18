@@ -96,6 +96,20 @@ class EnvironmentController extends Controller
         return response()->json($environment->load(['location', 'season']));
     }
 
+    public function destroy(Environment $environment): JsonResponse
+    {
+        if ($environment->observationRecords()->exists()) {
+            return response()->json([
+                'message' => 'Environment tidak dapat dihapus karena memiliki data pengamatan.',
+            ], 422);
+        }
+
+        AuditService::logDeleted($environment);
+        $environment->delete();
+
+        return response()->json(['message' => 'Environment berhasil dihapus.']);
+    }
+
     public function soilAnalyses(Environment $environment): JsonResponse
     {
         return response()->json($environment->soilAnalyses()->orderBy('sample_date', 'desc')->get());
