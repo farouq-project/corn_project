@@ -20,13 +20,9 @@ import {
   FileText,
   CalendarClock,
   Award,
-  MapPin,
   Table2,
   Sigma,
   X,
-  Microscope,
-  Repeat2,
-  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -43,18 +39,12 @@ const navigation = [
     items: [
       { name: "Data Pengamatan", href: "/phenotyping/data-pengamatan", icon: Table2 },
       { name: "Data Rata-Rata", href: "/phenotyping/data-rata-rata", icon: Sigma },
-      { name: "Import Data", href: "/phenotyping/import", icon: Upload },
     ],
   },
   {
     label: "Master Data",
     items: [
-      { name: "Manajemen Trial", href: "/trials", icon: BookOpen },
-      { name: "Pengamatan", href: "/master-data/pengamatan", icon: Microscope },
-      { name: "Genotipe", href: "/genotypes", icon: Dna },
-      { name: "Lingkungan (Env)", href: "/environments", icon: MapPin },
-      { name: "Ulangan (R)", href: "/master-data/ulangan", icon: Repeat2 },
-      { name: "Referensi", href: "/master-data", icon: Map },
+      { name: "Master Data", href: "/master-data", icon: Map },
     ],
   },
   {

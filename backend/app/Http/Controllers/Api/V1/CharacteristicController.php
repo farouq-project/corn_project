@@ -135,14 +135,19 @@ class CharacteristicController extends Controller
                 $name = $values[$headerMap['karakter'] ?? -1] ?? '';
                 if (!$name) { $errors[] = "Baris {$rowNum}: Nama karakter kosong, dilewati."; $skipped++; continue; }
 
-                $data = [
-                    'name' => $name,
-                    'group' => $values[$headerMap['kelompok pengamatan'] ?? -1] ?: null,
-                    'unit' => $values[$headerMap['satuan'] ?? -1] ?: null,
-                    'method_description' => $values[$headerMap['metode pengamatan'] ?? -1] ?: null,
-                    'decimal_places' => max(0, (int) ($values[$headerMap['desimal'] ?? -1] ?? 2)),
-                    'display_order' => max(0, (int) ($values[$headerMap['urutan'] ?? -1] ?? 0)),
-                ];
+                // Build update data — empty cells keep existing values (only override non-empty)
+                $rawGroup = $values[$headerMap['kelompok pengamatan'] ?? -1] ?? '';
+                $rawUnit = $values[$headerMap['satuan'] ?? -1] ?? '';
+                $rawMethod = $values[$headerMap['metode pengamatan'] ?? -1] ?? '';
+                $rawDecimal = $values[$headerMap['desimal'] ?? -1] ?? '';
+                $rawOrder = $values[$headerMap['urutan'] ?? -1] ?? '';
+
+                $data = ['name' => $name];
+                if ($rawGroup !== '') $data['group'] = $rawGroup;
+                if ($rawUnit !== '') $data['unit'] = $rawUnit;
+                if ($rawMethod !== '') $data['method_description'] = $rawMethod;
+                if ($rawDecimal !== '') $data['decimal_places'] = max(0, (int) $rawDecimal);
+                if ($rawOrder !== '') $data['display_order'] = max(0, (int) $rawOrder);
 
                 $existing = Characteristic::where('code', $code)->first();
                 if ($existing) {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Sheet } from "lucide-react";
+import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -23,11 +23,20 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
+interface ImportBatch { id:number; batch_code:string; original_filename:string; total_rows:number; valid_rows:number; invalid_rows:number; warning_rows:number; imported_rows:number; status:string; is_rolled_back:boolean; }
+interface StagingRow { id:number; row_number:number; raw_data:Record<string,string>; status:"pending"|"valid"|"warning"|"invalid"; errors?:string[]; warnings?:string[]; }
+
 export default function DataPengamatanPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [selectedBatchId, setSelectedBatchId] = useState<number|null>(null);
+  const [previewFilter, setPreviewFilter] = useState("");
   const [trialFilter, setTrialFilter] = useState<string>("");
   const [environmentFilter, setEnvironmentFilter] = useState<string>("");
   const [modalTrial, setModalTrial] = useState<string>("");
+  const importFileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   const { data: trialsData } = useQuery({
@@ -111,6 +120,22 @@ export default function DataPengamatanPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); },
   });
 
+  // Import queries & mutations
+  const { data: batchesData } = useQuery({ queryKey: ["import-batches"], queryFn: () => api.get<{data:ImportBatch[]}>("/v1/phenotyping/import/batches").then(r => r.data.data), enabled: showImport, refetchInterval: showImport ? 5000 : false });
+  const batches: ImportBatch[] = batchesData ?? [];
+  const selectedBatch = batches.find(b => b.id === selectedBatchId) ?? null;
+
+  const { data: previewData, isLoading: previewLoading } = useQuery({ queryKey: ["import-preview", selectedBatchId, previewFilter], queryFn: () => api.get(`/v1/phenotyping/import/batches/${selectedBatchId}/preview`, {params:{status:previewFilter||undefined,per_page:30}}).then(r => r.data), enabled: !!selectedBatchId && ["validated","completed"].includes(selectedBatch?.status ?? "") });
+  const previewRows: StagingRow[] = (previewData as {rows?:StagingRow[]})?.rows ?? [];
+
+  const uploadMutation = useMutation({ mutationFn: (file: File) => { const fd=new FormData(); fd.append("file",file); return api.post<{batch:ImportBatch}>("/v1/phenotyping/import/upload",fd,{headers:{"Content-Type":"multipart/form-data"}}); }, onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); setSelectedBatchId(res.data.batch.id); toast.success(`File diupload: ${res.data.batch.total_rows} baris`); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const validateMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/validate`), onSuccess: () => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["import-preview"]}); toast.success("Validasi selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const confirmMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/confirm`), onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["observation-records"]}); toast.success((res.data as {message?:string})?.message ?? "Import selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const rollbackMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/rollback`), onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["observation-records"]}); toast.success((res.data as {message?:string})?.message ?? "Rollback selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
+
+  const STATUS_COLOR: Record<string,string> = { parsed:"bg-yellow-50 text-yellow-700", validated:"bg-green-50 text-green-700", completed:"bg-emerald-50 text-emerald-700", failed:"bg-red-50 text-red-700", rolled_back:"bg-gray-100 text-gray-500" };
+  const STATUS_LABEL: Record<string,string> = { uploaded:"Diunggah", parsing:"Parsing...", parsed:"Diparsing", validating:"Memvalidasi...", validated:"Siap Impor", importing:"Mengimpor...", completed:"Selesai", failed:"Gagal", rolled_back:"Di-rollback" };
+
   const openModal = () => {
     setModalTrial(trialFilter);
     reset({ replication: 1 });
@@ -125,12 +150,88 @@ export default function DataPengamatanPage() {
         title="Data Pengamatan"
         description="Entri data pengamatan fenotipe per plot/replikasi, mengikuti format spreadsheet lapangan"
         actions={
-          <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
-            <Plus className="w-4 h-4" />
-            Tambah Baris
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowImport(v => !v)} className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
+              <Upload className="w-4 h-4" /> Import
+            </button>
+            <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+              <Plus className="w-4 h-4" /> Tambah Baris
+            </button>
+          </div>
         }
       />
+
+      {/* ── Inline import panel ── */}
+      {showImport && (
+        <div className="bg-white rounded-xl border border-green-100 p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-gray-800">Import Data Pengamatan</p>
+            <button onClick={() => setShowImport(false)}><X className="w-4 h-4 text-gray-400" /></button>
+          </div>
+          {/* Step 1: upload */}
+          <div className="flex flex-wrap gap-3">
+            <a href={`${API_BASE}/v1/phenotyping/import/template`} download className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-sm text-gray-600 rounded-lg hover:bg-gray-50 transition"><Download className="w-4 h-4"/> Download Template</a>
+            <button onClick={() => importFileRef.current?.click()} disabled={uploadMutation.isPending} className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-50"><Upload className="w-4 h-4"/>{uploadMutation.isPending?"Mengupload...":"Upload File"}</button>
+            <input ref={importFileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={e => { const f=e.target.files?.[0]; if(f) uploadMutation.mutate(f); e.target.value=""; }} />
+          </div>
+          {/* Batch list */}
+          {batches.length > 0 && (
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
+              {batches.slice(0,5).map(b => (
+                <div key={b.id} onClick={() => setSelectedBatchId(b.id===selectedBatchId?null:b.id)} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition border-b last:border-0 ${selectedBatchId===b.id?"bg-green-50":""}`}>
+                  <div className="flex-1 min-w-0"><p className="text-xs font-medium text-gray-800 truncate">{b.original_filename}</p><p className="text-[10px] text-gray-400">{b.batch_code} · {b.total_rows} baris</p></div>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLOR[b.status]??"bg-gray-100 text-gray-500"}`}>{STATUS_LABEL[b.status]??b.status}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Selected batch actions */}
+          {selectedBatch && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                {[["Total",selectedBatch.total_rows,"bg-gray-50"],["Valid",selectedBatch.valid_rows,"bg-green-50 text-green-700"],["Peringatan",selectedBatch.warning_rows,"bg-yellow-50 text-yellow-700"],["Error",selectedBatch.invalid_rows,"bg-red-50 text-red-700"]].map(([l,v,cls]) => (
+                  <div key={l as string} className={`rounded-lg p-2 ${cls}`}><p className="text-base font-bold">{v}</p><p className="text-[10px]">{l}</p></div>
+                ))}
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {selectedBatch.status==="parsed" && <button onClick={() => validateMutation.mutate(selectedBatch.id)} disabled={validateMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5"/>{validateMutation.isPending?"Memvalidasi...":"Validasi"}</button>}
+                {selectedBatch.status==="validated" && <button onClick={() => { if(confirm(`Import ${selectedBatch.valid_rows} baris valid?`)) confirmMutation.mutate(selectedBatch.id); }} disabled={confirmMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"><CheckCircle className="w-3.5 h-3.5"/>{confirmMutation.isPending?"Mengimpor...":`Konfirmasi (${selectedBatch.valid_rows} baris)`}</button>}
+                {selectedBatch.status==="completed" && !selectedBatch.is_rolled_back && <button onClick={() => { if(confirm("Rollback akan menghapus data yang diimpor. Lanjutkan?")) rollbackMutation.mutate(selectedBatch.id); }} disabled={rollbackMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-50 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/>Rollback</button>}
+              </div>
+              {/* Preview rows */}
+              {["validated","completed"].includes(selectedBatch.status) && (
+                <div>
+                  <div className="flex gap-2 mb-2 items-center">
+                    <p className="text-xs font-medium text-gray-600">Preview baris:</p>
+                    <select value={previewFilter} onChange={e => setPreviewFilter(e.target.value)} className="text-xs px-2 py-0.5 border border-gray-200 rounded">
+                      <option value="">Semua</option><option value="valid">Valid</option><option value="warning">Peringatan</option><option value="invalid">Error</option>
+                    </select>
+                  </div>
+                  <div className="overflow-auto max-h-48 rounded border border-gray-200 text-xs">
+                    {previewLoading ? <div className="p-4 text-center text-gray-400">Memuat...</div> :
+                    previewRows.length === 0 ? <div className="p-4 text-center text-gray-400">Tidak ada baris</div> :
+                    <table className="min-w-full divide-y divide-gray-100">
+                      <thead className="bg-gray-50 sticky top-0"><tr>{["#","Status","No Plot","Kode Gen","Env","R","Pesan"].map(h => <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-500 whitespace-nowrap">{h}</th>)}</tr></thead>
+                      <tbody className="divide-y divide-gray-50 bg-white">{previewRows.map(row => (
+                        <tr key={row.id} className={row.status==="invalid"?"bg-red-50/30":row.status==="warning"?"bg-yellow-50/30":""}>
+                          <td className="px-2 py-1.5 text-gray-400">{row.row_number}</td>
+                          <td className="px-2 py-1.5">{row.status==="valid"?<CheckCircle className="w-3.5 h-3.5 text-green-500"/>:row.status==="warning"?<AlertTriangle className="w-3.5 h-3.5 text-yellow-500"/>:<XCircle className="w-3.5 h-3.5 text-red-500"/>}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.raw_data["No Plot"]??"-"}</td>
+                          <td className="px-2 py-1.5 font-mono whitespace-nowrap">{row.raw_data["Kode Gen"]??"-"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{row.raw_data["Environment"]??"-"}</td>
+                          <td className="px-2 py-1.5">{row.raw_data["R"]??"-"}</td>
+                          <td className="px-2 py-1.5 text-red-600">{[...(row.errors??[]),...(row.warnings??[])].join("; ")}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <p className="text-xs text-gray-400">Template: No Plot · Kode Gen · Gen · Environment · R · [kolom karakteristik]. Sel kosong → tidak mengubah nilai yang sudah ada.</p>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">

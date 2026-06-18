@@ -234,10 +234,11 @@ class PhenotypingImportService
                     ]
                 );
 
-                // Upsert characteristic values
+                // Upsert characteristic values — skip null/empty cells to preserve existing data
                 foreach ($norm['values'] ?? [] as $code => $value) {
                     $char = $characteristicCache[strtoupper($code)] ?? null;
                     if (!$char) continue;
+                    if ($value === null) continue; // empty cell → keep existing value
 
                     ObservationValue::updateOrCreate(
                         [

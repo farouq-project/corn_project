@@ -34,6 +34,8 @@ Route::prefix('v1')->group(function () {
     // Public downloads (no auth needed — static templates only)
     Route::get('import/template', [InventoryImportController::class, 'downloadTemplate']);
     Route::get('genotypes/import-template', [GenotypeController::class, 'downloadTemplate']);
+    Route::get('phenotyping/import/template', [PhenotypingImportController::class, 'downloadTemplate']);
+    Route::get('phenotyping/characteristics/import/template', [CharacteristicController::class, 'downloadTemplate']);
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
@@ -178,7 +180,6 @@ Route::prefix('v1')->group(function () {
             Route::post('characteristics', [CharacteristicController::class, 'store']);
             Route::put('characteristics/{characteristic}', [CharacteristicController::class, 'update']);
             Route::delete('characteristics/{characteristic}', [CharacteristicController::class, 'destroy']);
-            Route::get('characteristics/import/template', [CharacteristicController::class, 'downloadTemplate']);
             Route::post('characteristics/import', [CharacteristicController::class, 'import']);
 
             Route::get('records', [ObservationRecordController::class, 'index']);
@@ -190,7 +191,6 @@ Route::prefix('v1')->group(function () {
 
             // Bulk import (Phase 2 scaffolding — only template download + upload work)
             Route::prefix('import')->group(function () {
-                Route::get('template', [PhenotypingImportController::class, 'downloadTemplate']);
                 Route::get('batches', [PhenotypingImportController::class, 'batchIndex']);
                 Route::get('batches/{batch}', [PhenotypingImportController::class, 'batchShow']);
                 Route::post('upload', [PhenotypingImportController::class, 'upload']);
