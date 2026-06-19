@@ -143,6 +143,7 @@ Route::prefix('v1')->group(function () {
             Route::post('evaluations', [DiseaseController::class, 'store']);
             Route::get('evaluations/{evaluation}', [DiseaseController::class, 'show']);
             Route::post('evaluations/{evaluation}/scores', [DiseaseController::class, 'storeScores']);
+            Route::delete('evaluations/{evaluation}', [DiseaseController::class, 'destroy']);
             Route::post('evaluations/{evaluation}/approve', [DiseaseController::class, 'approve']);
             Route::get('resistance-summary', [DiseaseController::class, 'resistanceSummary']);
         });

@@ -65,6 +65,19 @@ class DiseaseController extends Controller
         ]));
     }
 
+    public function destroy(DiseaseEvaluation $evaluation): JsonResponse
+    {
+        if ($evaluation->status === 'approved') {
+            return response()->json(['message' => 'Evaluasi yang sudah disetujui tidak dapat dihapus.'], 422);
+        }
+
+        AuditService::logDeleted($evaluation);
+        $evaluation->scores()->delete();
+        $evaluation->delete();
+
+        return response()->json(['message' => 'Evaluasi berhasil dihapus.']);
+    }
+
     // ── Disease Scores ─────────────────────────────────────────────────────────
 
     public function storeScores(Request $request, DiseaseEvaluation $evaluation): JsonResponse

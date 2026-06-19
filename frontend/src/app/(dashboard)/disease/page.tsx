@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, CheckCircle2, X, Loader2, Eye, Edit2 } from "lucide-react";
+import { Plus, CheckCircle2, X, Loader2, Eye, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -140,6 +140,18 @@ export default function DiseasePage() {
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/disease/evaluations/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["disease-evaluations"] }); toast.success("Evaluasi dihapus"); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/disease/evaluations/${id}`))),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["disease-evaluations"] }); toast.success("Evaluasi terpilih dihapus"); },
+    onError: () => toast.error("Sebagian evaluasi gagal dihapus"),
+  });
+
   const approveMutation = useMutation({
     mutationFn: (id: number) => api.post(`/v1/disease/evaluations/${id}/approve`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["disease-evaluations"] }); toast.success("Disetujui"); },
@@ -253,6 +265,15 @@ export default function DiseasePage() {
               <CheckCircle2 className="w-3.5 h-3.5" />
             </button>
           )}
+          {row.original.status !== "approved" && (
+            <button
+              onClick={() => { if (confirm(`Hapus evaluasi ${row.original.evaluation_code}?`)) deleteMutation.mutate(row.original.id); }}
+              className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
+              title="Hapus"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -315,7 +336,10 @@ export default function DiseasePage() {
         <div className="p-6">
           {activeTab === "evaluations" && (
             <DataTable data={evalList} columns={columns} isLoading={isLoading}
-              searchPlaceholder="Cari evaluasi..." emptyMessage="Belum ada evaluasi penyakit" />
+              searchPlaceholder="Cari evaluasi..." emptyMessage="Belum ada evaluasi penyakit"
+              getRowId={r => String(r.id)}
+              onBulkDelete={rows => bulkDeleteMutation.mutate(rows.filter(r => r.status !== "approved").map(r => r.id))}
+              isBulkDeleting={bulkDeleteMutation.isPending} />
           )}
 
           {activeTab === "summary" && (

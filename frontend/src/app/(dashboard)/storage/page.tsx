@@ -35,20 +35,6 @@ const inventorySchema = z.object({
   notes: z.string().optional(),
 });
 
-const unitSchema = z.object({
-  unit_name: z.string().min(1, "Nama unit wajib diisi"),
-  unit_type: z.string().min(1, "Tipe unit wajib dipilih"),
-  room_name: z.string().optional(),
-  temperature_min: z.preprocess(toOptionalNumber, z.number().optional()),
-  temperature_max: z.preprocess(toOptionalNumber, z.number().optional()),
-  humidity_min: z.preprocess(toOptionalNumber, z.number().optional()),
-  humidity_max: z.preprocess(toOptionalNumber, z.number().optional()),
-  capacity_racks: z.preprocess(toOptionalNumber, z.number().optional()),
-  capacity_boxes_per_rack: z.preprocess(toOptionalNumber, z.number().optional()),
-});
-
-type UnitForm = z.infer<typeof unitSchema>;
-
 const movementSchema = z.object({
   movement_type: z.enum(["out_planting", "out_laboratory", "out_distribution", "out_discard", "in_return", "adjustment"]),
   quantity_g: z.preprocess(Number, z.number().min(0.01, "Jumlah wajib diisi")),
@@ -71,15 +57,15 @@ const movementTypeLabels: Record<string, string> = {
   adjustment: "Penyesuaian",
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
+
 export default function StoragePage() {
-  const [activeTab, setActiveTab] = useState<"inventory" | "units">("inventory");
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
   const [editingInventory, setEditingInventory] = useState<SeedInventory | null>(null);
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedInventory, setSelectedInventory] = useState<SeedInventory | null>(null);
-  const [isUnitModalOpen, setIsUnitModalOpen] = useState(false);
-  const [editingUnit, setEditingUnit] = useState<StorageUnit | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: dashboardData } = useQuery({
@@ -92,10 +78,11 @@ export default function StoragePage() {
     queryFn: () => storageService.getInventory({ per_page: 100 }).then((r) => r.data as { data: SeedInventory[] }),
   });
 
-  const { data: unitsData, isLoading: unitsLoading } = useQuery({
-    queryKey: ["storage-units"],
+  const { data: unitsData } = useQuery({
+    queryKey: ["storage-units-simple"],
     queryFn: () => storageService.getUnits({ all: true }).then((r) => r.data as StorageUnit[]),
   });
+  const units = (unitsData as StorageUnit[]) ?? [];
 
   const { data: genotypesData } = useQuery({
     queryKey: ["genotypes-simple"],
@@ -110,10 +97,6 @@ export default function StoragePage() {
   const movementForm = useForm<MovementForm>({
     resolver: zodResolver(movementSchema) as never,
     defaultValues: { movement_date: new Date().toISOString().slice(0, 10) },
-  });
-
-  const unitForm = useForm<UnitForm>({
-    resolver: zodResolver(unitSchema) as never,
   });
 
   const createInventoryMutation = useMutation({
@@ -161,49 +144,6 @@ export default function StoragePage() {
     setIsInventoryModalOpen(true);
   };
 
-  const createUnitMutation = useMutation({
-    mutationFn: (data: UnitForm) => api.post("/v1/storage/units", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-units"] });
-      queryClient.invalidateQueries({ queryKey: ["storage-dashboard"] });
-      toast.success("Unit penyimpanan dibuat");
-      setIsUnitModalOpen(false);
-      setEditingUnit(null);
-      unitForm.reset();
-    },
-    onError: (error) => toast.error(getApiErrorMessage(error)),
-  });
-
-  const updateUnitMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<UnitForm> }) =>
-      api.put(`/v1/storage/units/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-units"] });
-      queryClient.invalidateQueries({ queryKey: ["storage-dashboard"] });
-      toast.success("Unit penyimpanan diperbarui");
-      setIsUnitModalOpen(false);
-      setEditingUnit(null);
-      unitForm.reset();
-    },
-    onError: (error) => toast.error(getApiErrorMessage(error)),
-  });
-
-  const openEditUnit = (unit: StorageUnit) => {
-    setEditingUnit(unit);
-    unitForm.reset({
-      unit_name: unit.unit_name,
-      unit_type: unit.unit_type,
-      room_name: unit.room_name ?? "",
-      temperature_min: unit.temperature_min ?? undefined,
-      temperature_max: unit.temperature_max ?? undefined,
-      humidity_min: unit.humidity_min ?? undefined,
-      humidity_max: unit.humidity_max ?? undefined,
-      capacity_racks: unit.capacity_racks ?? undefined,
-      capacity_boxes_per_rack: unit.capacity_boxes_per_rack ?? undefined,
-    });
-    setIsUnitModalOpen(true);
-  };
-
   const recordMovementMutation = useMutation({
     mutationFn: (data: MovementForm) => storageService.recordMovement(selectedInventory!.id, data),
     onSuccess: () => {
@@ -218,7 +158,6 @@ export default function StoragePage() {
   });
 
   const inventory = inventoryData?.data ?? [];
-  const units = (unitsData as StorageUnit[]) ?? [];
 
   const inventoryColumns: ColumnDef<SeedInventory, unknown>[] = [
     {
@@ -341,10 +280,14 @@ export default function StoragePage() {
         title="Monitoring Penyimpanan Benih"
         description="Pantau inventaris, kondisi, dan pergerakan benih jagung"
         actions={
-          <button onClick={() => setIsInventoryModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-            <Plus className="w-4 h-4" />
-            Tambah Inventaris
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowImport(v => !v)} className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
+              <ArrowRightLeft className="w-4 h-4" /> Import
+            </button>
+            <button onClick={() => setIsInventoryModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+              <Plus className="w-4 h-4" /> Tambah Inventaris
+            </button>
+          </div>
         }
       />
 
@@ -400,82 +343,38 @@ export default function StoragePage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="flex border-b border-gray-100">
-          {(["inventory", "units"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                "px-6 py-3.5 text-sm font-medium transition",
-                activeTab === tab ? "text-green-700 border-b-2 border-green-600 bg-green-50/50" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              {tab === "inventory" ? "Inventaris Benih" : "Unit Penyimpanan"}
-            </button>
-          ))}
+      {/* Import panel */}
+      {showImport && (
+        <div className="bg-white rounded-xl border border-green-100 p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-semibold text-gray-800">Import Inventaris Benih dari Excel</p>
+            <button onClick={() => setShowImport(false)}><X className="w-4 h-4 text-gray-400" /></button>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <a href={`${API_BASE}/v1/import/template`} download className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-sm text-gray-600 rounded-lg hover:bg-gray-50 transition">
+              <ArrowRightLeft className="w-4 h-4" /> Download Template
+            </a>
+            <a href="/storage/import" className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition">
+              <Plus className="w-4 h-4" /> Upload & Import
+            </a>
+          </div>
+          <p className="text-xs text-gray-400">Klik "Upload & Import" untuk proses validasi, preview, dan konfirmasi import lengkap.</p>
         </div>
+      )}
 
+      {/* Inventory table */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="p-6">
-          {activeTab === "inventory" && (
-            <DataTable
-              data={inventory}
-              columns={inventoryColumns}
-              isLoading={inventoryLoading}
-              searchPlaceholder="Cari kode paket atau genotipe..."
-              emptyMessage="Belum ada inventaris benih"
-            />
-          )}
-
-          {activeTab === "units" && (
-            <>
-              <div className="flex justify-end mb-4">
-                <button onClick={() => { setEditingUnit(null); unitForm.reset(); setIsUnitModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-                  <Plus className="w-4 h-4" /> Tambah Unit
-                </button>
-              </div>
-              <DataTable
-                data={units}
-                columns={[
-                  { header: "Kode", accessorKey: "unit_code", cell: ({ getValue }) => <span className="font-mono font-semibold text-blue-700">{getValue() as string}</span> },
-                  { header: "Nama Unit", accessorKey: "unit_name" },
-                  { header: "Tipe", accessorKey: "unit_type" },
-                  { header: "Ruangan", accessorKey: "room_name" },
-                  {
-                    header: "Suhu Range",
-                    id: "temp",
-                    cell: ({ row }) => (
-                      row.original.temperature_min || row.original.temperature_max
-                        ? <span className="text-sm"><Thermometer className="w-3 h-3 inline text-blue-400" /> {row.original.temperature_min}°C – {row.original.temperature_max}°C</span>
-                        : <span className="text-gray-300">-</span>
-                    ),
-                  },
-                  {
-                    header: "Kapasitas",
-                    id: "capacity",
-                    cell: ({ row }) => (
-                      <span className="text-sm">{row.original.active_inventory_count ?? 0} / {(row.original.capacity_racks ?? 0) * (row.original.capacity_boxes_per_rack ?? 1)}</span>
-                    ),
-                  },
-                  { header: "Status", accessorKey: "is_active", cell: ({ getValue }) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
-                  {
-                    header: "Aksi",
-                    id: "unit_actions",
-                    cell: ({ row }) => (
-                      <button onClick={() => openEditUnit(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition" title="Edit">
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    ),
-                  },
-                ]}
-                isLoading={unitsLoading}
-                emptyMessage="Belum ada unit penyimpanan"
-              />
-            </>
-          )}
+          <DataTable
+            data={inventory}
+            columns={inventoryColumns}
+            isLoading={inventoryLoading}
+            searchPlaceholder="Cari kode paket atau genotipe..."
+            emptyMessage="Belum ada inventaris benih"
+          />
         </div>
       </div>
+
 
       {/* Add / Edit Inventory Modal */}
       {isInventoryModalOpen && (
@@ -619,73 +518,6 @@ export default function StoragePage() {
         </div>
       )}
 
-      {/* Unit Create / Edit Modal */}
-      {isUnitModalOpen && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold">{editingUnit ? "Edit Unit Penyimpanan" : "Tambah Unit Penyimpanan"}</h3>
-              <button onClick={() => { setIsUnitModalOpen(false); setEditingUnit(null); unitForm.reset(); }} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
-            </div>
-            <form onSubmit={unitForm.handleSubmit((d) => {
-              const data = d as UnitForm;
-              if (editingUnit) updateUnitMutation.mutate({ id: editingUnit.id, data });
-              else createUnitMutation.mutate(data);
-            })} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Unit *</label>
-                  <input {...unitForm.register("unit_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. Cold Room A" />
-                  {unitForm.formState.errors.unit_name && <p className="text-red-500 text-xs mt-1">{unitForm.formState.errors.unit_name.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipe Unit *</label>
-                  <select {...unitForm.register("unit_type")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="">-- Pilih Tipe --</option>
-                    <option value="cold_room">Cold Room</option>
-                    <option value="freezer">Freezer</option>
-                    <option value="refrigerator">Kulkas</option>
-                    <option value="dry_room">Gudang Kering</option>
-                    <option value="cabinet">Lemari</option>
-                    <option value="shelf">Rak</option>
-                  </select>
-                  {unitForm.formState.errors.unit_type && <p className="text-red-500 text-xs mt-1">{unitForm.formState.errors.unit_type.message}</p>}
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Ruangan</label>
-                <input {...unitForm.register("room_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. Gedung Pascapanen Lt. 2" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Suhu Min (°C)</label>
-                  <input {...unitForm.register("temperature_min")} type="number" step="0.1" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Suhu Max (°C)</label>
-                  <input {...unitForm.register("temperature_max")} type="number" step="0.1" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kapasitas Rak</label>
-                  <input {...unitForm.register("capacity_racks")} type="number" min="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kotak per Rak</label>
-                  <input {...unitForm.register("capacity_boxes_per_rack")} type="number" min="0" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                </div>
-              </div>
-              <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => { setIsUnitModalOpen(false); setEditingUnit(null); unitForm.reset(); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
-                <button type="submit" disabled={createUnitMutation.isPending || updateUnitMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
-                  {(createUnitMutation.isPending || updateUnitMutation.isPending) ? "Menyimpan..." : editingUnit ? "Simpan Perubahan" : "Buat Unit"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Inventory Detail Modal */}
       {isDetailOpen && selectedInventory && (

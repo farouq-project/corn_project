@@ -5,14 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Dna,
   Package,
-  Activity,
   Wallet,
   Map,
   Users,
   Settings,
-  BookOpen,
   Leaf,
   ChevronRight,
   BarChart3,
@@ -20,8 +17,7 @@ import {
   FileText,
   CalendarClock,
   Award,
-  Table2,
-  Sigma,
+  Microscope,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -35,31 +31,17 @@ const navigation = [
     ],
   },
   {
-    label: "Phenotyping",
+    label: "Pengamatan",
     items: [
-      { name: "Data Pengamatan", href: "/phenotyping/data-pengamatan", icon: Table2 },
-      { name: "Data Rata-Rata", href: "/phenotyping/data-rata-rata", icon: Sigma },
+      { name: "Karakteristik", href: "/pengamatan/karakteristik", icon: Microscope },
+      { name: "Penyakit", href: "/disease", icon: Bug },
+      { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
     ],
   },
   {
     label: "Master Data",
     items: [
       { name: "Master Data", href: "/master-data", icon: Map },
-    ],
-  },
-  {
-    label: "Pengamatan Lapang",
-    items: [
-      { name: "Evaluasi Penyakit", href: "/disease", icon: Bug },
-      { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
-      { name: "Kegiatan Lapang", href: "/field-activities", icon: Activity },
-    ],
-  },
-  {
-    label: "Inventaris",
-    items: [
-      { name: "Inventaris Benih", href: "/storage", icon: Package },
-      { name: "Import Data Historis", href: "/storage/import", icon: FileText },
     ],
   },
   {
@@ -71,6 +53,7 @@ const navigation = [
   {
     label: "Administrasi",
     items: [
+      { name: "Inventaris Benih", href: "/storage", icon: Package },
       { name: "Dokumen Penelitian", href: "/documents", icon: FileText },
       { name: "Pelepasan Varietas", href: "/variety-candidates", icon: Award },
       { name: "Pengguna", href: "/users", icon: Users },
