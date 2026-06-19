@@ -11,11 +11,11 @@ class Environment extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'environment_code', 'location_id', 'season_id',
+        'environment_code', 'name', 'address', 'luas_ha',
+        'location_id', 'season_id',
         'latitude', 'longitude', 'elevation_m',
         'irrigation_type', 'land_history', 'soil_type',
         'total_rainfall_mm', 'avg_temperature_c', 'avg_humidity_percent',
-        'planting_date', 'harvest_date',
         'env_data_source', 'api_metadata', 'notes', 'created_by',
     ];
 
@@ -92,8 +92,9 @@ class Environment extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function getNameAttribute(): string
+    public function getDisplayNameAttribute(): string
     {
+        if ($this->name) return $this->name;
         return "{$this->location?->field_name} — {$this->season?->season_name}";
     }
 }

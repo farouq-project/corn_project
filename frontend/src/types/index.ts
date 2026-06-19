@@ -26,18 +26,22 @@ export interface User {
 export interface Environment {
   id: number;
   environment_code: string;
-  location?: {
-    field_name: string;
-  };
-  season?: {
-    season_name: string;
-  };
+  name?: string;
+  address?: string;
+  luas_ha?: number;
+  location_id?: number;
+  season_id?: number;
+  location?: { field_name: string };
+  season?: { season_name: string };
+  latitude?: number;
+  longitude?: number;
   elevation_m?: number;
   avg_temperature_c?: number;
   total_rainfall_mm?: number;
   irrigation_type?: string;
   planting_date?: string;
   harvest_date?: string;
+  notes?: string;
 }
 
 export interface Season {

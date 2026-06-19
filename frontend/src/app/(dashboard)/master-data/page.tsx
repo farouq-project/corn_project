@@ -16,14 +16,16 @@ import { getApiErrorMessage } from "@/lib/axios";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PageHeader } from "@/components/shared/PageHeader";
-import type { Season, Location, StorageUnit, Characteristic, Environment, Genotype, Trial } from "@/types";
+import { EnvironmentForm, type EnvironmentFormData } from "@/components/environment/EnvironmentForm";
+import type { Season, StorageUnit, Characteristic, Environment, Genotype, Trial } from "@/types";
+// Location type no longer needed — Lokasi tab removed, address embedded in Lingkungan
 import type { ColumnDef } from "@tanstack/react-table";
 import { formatDate, cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 type TabType = "genotypes" | "trials" | "characteristics" | "environments" | "replications"
-             | "seasons" | "locations" | "storage_units";
+             | "seasons" | "storage_units";
 
 const toN = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
 
@@ -58,17 +60,6 @@ const charSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
-const envSchema = z.object({
-  location_id: z.coerce.number().int().positive(),
-  season_id: z.coerce.number().int().positive(),
-  elevation_m: z.coerce.number().int().optional().nullable(),
-  avg_temperature_c: z.coerce.number().optional().nullable(),
-  total_rainfall_mm: z.coerce.number().optional().nullable(),
-  irrigation_type: z.string().optional(),
-  planting_date: z.string().optional(),
-  harvest_date: z.string().optional(),
-});
-
 const seasonSchema = z.object({
   season_code: z.string().min(1),
   season_name: z.string().min(1),
@@ -77,15 +68,6 @@ const seasonSchema = z.object({
   status: z.enum(["upcoming", "active", "completed", "cancelled"]).default("upcoming"),
 });
 
-const locationSchema = z.object({
-  field_code: z.string().min(1),
-  field_name: z.string().min(1),
-  province: z.string().min(1, "Provinsi wajib diisi"),
-  regency: z.string().optional(),
-  latitude: z.preprocess(toN, z.number().optional()),
-  longitude: z.preprocess(toN, z.number().optional()),
-  area_hectares: z.preprocess(toN, z.number().optional()),
-});
 
 const storageSchema = z.object({
   unit_code: z.string().min(1),
@@ -106,6 +88,7 @@ export default function MasterDataPage() {
   const [editingChar, setEditingChar] = useState<Characteristic | null>(null);
   const [charIsActive, setCharIsActive] = useState(true);
   const [editingEnv, setEditingEnv] = useState<Environment | null>(null);
+  const [envFormKey, setEnvFormKey] = useState(0); // remount form on open
   const [showCharImport, setShowCharImport] = useState(false);
   const [charImportResult, setCharImportResult] = useState<{created:number;updated:number;skipped:number;errors:string[]} | null>(null);
   const [repExpanded, setRepExpanded] = useState<Set<number>>(new Set());
@@ -129,7 +112,6 @@ export default function MasterDataPage() {
   const envs: Environment[] = envsRes?.data ?? [];
 
   const { data: seasons, isLoading: sLoading } = useQuery({ queryKey: ["seasons"], queryFn: () => api.get("/v1/seasons?all=false&per_page=50").then(r => r.data as {data:Season[]}) });
-  const { data: locations, isLoading: lLoading } = useQuery({ queryKey: ["locations"], queryFn: () => api.get("/v1/locations?per_page=50").then(r => r.data as {data:Location[]}) });
   const { data: storageUnits, isLoading: suLoading } = useQuery({ queryKey: ["storage-units-all"], queryFn: () => api.get("/v1/storage/units?per_page=50").then(r => r.data as {data:StorageUnit[]}) });
   const { data: seasonsList } = useQuery({ queryKey: ["seasons-simple"], queryFn: () => api.get("/v1/seasons?all=true").then(r => r.data as {id:number;season_name:string}[]) });
   const { data: locationsList } = useQuery({ queryKey: ["locations-simple"], queryFn: () => api.get("/v1/locations?all=true").then(r => r.data as {id:number;field_name:string}[]) });
@@ -139,9 +121,7 @@ export default function MasterDataPage() {
   const gForm = useForm<z.infer<typeof genotypeSchema>>({ resolver: zodResolver(genotypeSchema) as never, defaultValues: { category: "inbred_line", trial_type: "normal", status: "active" } });
   const tForm = useForm<z.infer<typeof trialSchema>>({ resolver: zodResolver(trialSchema) as never, defaultValues: { layout_design: "RCBD", replications: 3, status: "planned" } });
   const cForm = useForm<z.infer<typeof charSchema>>({ resolver: zodResolver(charSchema) as never, defaultValues: { decimal_places: 2, display_order: 0, is_active: true } });
-  const envForm = useForm<z.infer<typeof envSchema>>({ resolver: zodResolver(envSchema) as never });
   const sForm = useForm<z.infer<typeof seasonSchema>>({ resolver: zodResolver(seasonSchema) as never, defaultValues: { status: "upcoming" } });
-  const lForm = useForm<z.infer<typeof locationSchema>>({ resolver: zodResolver(locationSchema) as never });
   const suForm = useForm<z.infer<typeof storageSchema>>({ resolver: zodResolver(storageSchema) as never, defaultValues: { unit_type: "refrigerator" } });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -156,17 +136,15 @@ export default function MasterDataPage() {
   const cUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: Partial<z.infer<typeof charSchema>>}) => api.put(`/v1/phenotyping/characteristics/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const cBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/phenotyping/characteristics/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
-  const envCreate = useMutation({ mutationFn: (d: z.infer<typeof envSchema>) => api.post("/v1/environments", d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); toast.success("Environment ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const envUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: Partial<z.infer<typeof envSchema>>}) => api.put(`/v1/environments/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); toast.success("Environment diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const envBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/environments/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); toast.success("Environment dihapus"); }, onError: () => toast.error("Sebagian environment gagal dihapus") });
+  const envCreate = useMutation({ mutationFn: (d: EnvironmentFormData) => api.post("/v1/environments", d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const envUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: EnvironmentFormData}) => api.put(`/v1/environments/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const envBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/environments/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan dihapus"); }, onError: () => toast.error("Sebagian lingkungan gagal dihapus") });
 
   const repUpdate = useMutation({ mutationFn: ({id,replications}: {id:number; replications:number}) => api.put(`/v1/trials/${id}`, {replications}), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Ulangan diperbarui"); setRepEditing(null); }, onError: e => toast.error(getApiErrorMessage(e)) });
 
   const sCreate = useMutation({ mutationFn: (d: z.infer<typeof seasonSchema>) => api.post("/v1/seasons", d), onSuccess: () => { qc.invalidateQueries({queryKey:["seasons"]}); toast.success("Musim ditambahkan"); closeModal(); sForm.reset(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const sBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/seasons/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["seasons"]}); toast.success("Musim dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
-  const lCreate = useMutation({ mutationFn: (d: z.infer<typeof locationSchema>) => api.post("/v1/locations", d), onSuccess: () => { qc.invalidateQueries({queryKey:["locations"]}); toast.success("Lokasi ditambahkan"); closeModal(); lForm.reset(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const lBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/locations/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["locations"]}); toast.success("Lokasi dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
   const suCreate = useMutation({ mutationFn: (d: z.infer<typeof storageSchema>) => api.post("/v1/storage/units", d), onSuccess: () => { qc.invalidateQueries({queryKey:["storage-units-all"]}); toast.success("Unit ditambahkan"); closeModal(); suForm.reset(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const suBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/storage/units/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["storage-units-all"]}); toast.success("Unit dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
@@ -190,7 +168,7 @@ export default function MasterDataPage() {
 
   const openEnvEdit = (e: Environment) => {
     setEditingEnv(e);
-    envForm.reset({ location_id: (e as Environment & {location_id?:number}).location_id, season_id: (e as Environment & {season_id?:number}).season_id, elevation_m: e.elevation_m, avg_temperature_c: e.avg_temperature_c, total_rainfall_mm: e.total_rainfall_mm, irrigation_type: e.irrigation_type ?? "", planting_date: e.planting_date ?? "", harvest_date: e.harvest_date ?? "" });
+    setEnvFormKey(k => k + 1);
     setIsModalOpen(true);
   };
 
@@ -203,7 +181,6 @@ export default function MasterDataPage() {
     { id: "environments",   label: "Lingkungan",       icon: MapPin,     count: envs.length },
     { id: "replications",   label: "Ulangan (R)",      icon: Repeat2,    count: trials.length },
     { id: "seasons",        label: "Musim Tanam",      icon: Calendar,   count: (seasons as {data:Season[]})?.data?.length ?? 0 },
-    { id: "locations",      label: "Lokasi",           icon: Map,        count: (locations as {data:Location[]})?.data?.length ?? 0 },
     { id: "storage_units",  label: "Unit Penyimpanan", icon: Package,    count: (storageUnits as {data:StorageUnit[]})?.data?.length ?? 0 },
   ];
 
@@ -234,10 +211,11 @@ export default function MasterDataPage() {
   ];
 
   const envCols: ColumnDef<Environment, unknown>[] = [
-    { header: "Kode", accessorKey: "environment_code", cell: ({getValue}) => <span className="font-mono font-bold text-green-700">{getValue() as string}</span> },
-    { header: "Lokasi", accessorKey: "location.field_name", cell: ({row}) => <span className="text-xs">{row.original.location?.field_name ?? "-"}</span> },
+    { header: "Nama Lingkungan", id: "envName", cell: ({row}) => <span className="font-medium text-gray-800">{(row.original as Environment & {name?:string}).name ?? row.original.environment_code}</span> },
+    { header: "Kode", accessorKey: "environment_code", cell: ({getValue}) => <span className="font-mono text-xs text-green-700">{getValue() as string}</span> },
     { header: "Musim", accessorKey: "season.season_name", cell: ({row}) => <span className="text-xs">{row.original.season?.season_name ?? "-"}</span> },
     { header: "Elevasi", accessorKey: "elevation_m", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()} m` : "—"}</span> },
+    { header: "Suhu", accessorKey: "avg_temperature_c", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()}°C` : "—"}</span> },
     { header: "Aksi", id: "eActions", cell: ({row}) => <button onClick={() => openEnvEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
   ];
 
@@ -249,13 +227,6 @@ export default function MasterDataPage() {
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
   ];
 
-  const lCols: ColumnDef<Location, unknown>[] = [
-    { header: "Kode", accessorKey: "field_code", cell: ({getValue}) => <span className="font-mono font-semibold text-green-700">{getValue() as string}</span> },
-    { header: "Nama Kebun", accessorKey: "field_name" },
-    { header: "Kabupaten", id: "dist", cell: ({row}) => <span className="text-sm">{[row.original.district, row.original.regency].filter(Boolean).join(", ")}</span> },
-    { header: "Provinsi", accessorKey: "province" },
-    { header: "Luas (ha)", accessorKey: "area_hectares" },
-  ];
 
   const suCols: ColumnDef<StorageUnit, unknown>[] = [
     { header: "Kode", accessorKey: "unit_code", cell: ({getValue}) => <span className="font-mono font-semibold text-blue-700">{getValue() as string}</span> },
@@ -265,11 +236,11 @@ export default function MasterDataPage() {
     { header: "Status", accessorKey: "is_active", cell: ({getValue}) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
   ];
 
-  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","seasons","locations","storage_units"];
+  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","seasons","storage_units"];
   const modalLabel: Record<TabType, string> = {
     genotypes: "Genotipe", trials: "Trial", characteristics: editingChar ? "Edit Karakter" : "Karakter",
     environments: editingEnv ? "Edit Lingkungan" : "Lingkungan", replications: "Ulangan",
-    seasons: "Musim Tanam", locations: "Lokasi", storage_units: "Unit Penyimpanan",
+    seasons: "Musim Tanam", storage_units: "Unit Penyimpanan",
   };
 
   return (
@@ -403,9 +374,6 @@ export default function MasterDataPage() {
           {/* ── Musim Tanam ── */}
           {activeTab === "seasons" && <DataTable data={(seasons as {data:Season[]})?.data ?? []} columns={sCols} isLoading={sLoading} searchPlaceholder="Cari musim..." emptyMessage="Belum ada musim" getRowId={r => String(r.id)} onBulkDelete={rows => sBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={sBulkDel.isPending} />}
 
-          {/* ── Lokasi ── */}
-          {activeTab === "locations" && <DataTable data={(locations as {data:Location[]})?.data ?? []} columns={lCols} isLoading={lLoading} searchPlaceholder="Cari lokasi..." emptyMessage="Belum ada lokasi" getRowId={r => String(r.id)} onBulkDelete={rows => lBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={lBulkDel.isPending} />}
-
           {/* ── Unit Penyimpanan ── */}
           {activeTab === "storage_units" && <DataTable data={(storageUnits as {data:StorageUnit[]})?.data ?? []} columns={suCols} isLoading={suLoading} searchPlaceholder="Cari unit penyimpanan..." emptyMessage="Belum ada unit" getRowId={r => String(r.id)} onBulkDelete={rows => suBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={suBulkDel.isPending} />}
         </div>
@@ -414,9 +382,9 @@ export default function MasterDataPage() {
       {/* ── Modal ─────────────────────────────────────────────────────────── */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className={`bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ${activeTab === "environments" ? "max-w-xl" : "max-w-lg"}`}>
             <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold">Tambah {modalLabel[activeTab]}</h3>
+              <h3 className="text-lg font-semibold">{activeTab === "environments" ? modalLabel[activeTab] : `Tambah ${modalLabel[activeTab]}`}</h3>
               <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6">
@@ -476,24 +444,27 @@ export default function MasterDataPage() {
                 </form>
               )}
 
-              {/* Lingkungan */}
+              {/* Lingkungan — uses Google Maps form */}
               {activeTab === "environments" && (
-                <form onSubmit={envForm.handleSubmit(d => editingEnv ? envUpdate.mutate({id:editingEnv.id, d}) : envCreate.mutate(d))} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Lokasi *</label><select {...envForm.register("location_id")} disabled={!!editingEnv} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50"><option value="">-- Pilih --</option>{locationsList?.map(l => <option key={l.id} value={l.id}>{l.field_name}</option>)}</select></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Musim *</label><select {...envForm.register("season_id")} disabled={!!editingEnv} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50"><option value="">-- Pilih --</option>{seasonsList?.map(s => <option key={s.id} value={s.id}>{s.season_name}</option>)}</select></div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Elevasi (m)</label><input type="number" {...envForm.register("elevation_m")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Suhu Rata (°C)</label><input type="number" step="0.1" {...envForm.register("avg_temperature_c")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Curah Hujan (mm)</label><input type="number" step="0.1" {...envForm.register("total_rainfall_mm")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Tanam</label><input type="date" {...envForm.register("planting_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Panen</label><input type="date" {...envForm.register("harvest_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={envCreate.isPending||envUpdate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{editingEnv?"Simpan Perubahan":"Buat Environment"}</button></div>
-                </form>
+                <EnvironmentForm
+                  key={envFormKey}
+                  seasons={seasonsList ?? []}
+                  editMode={!!editingEnv}
+                  defaultValues={editingEnv ? {
+                    name: (editingEnv as Environment & {name?:string}).name ?? "",
+                    address: (editingEnv as Environment & {address?:string}).address ?? "",
+                    latitude: editingEnv.latitude,
+                    longitude: editingEnv.longitude,
+                    season_id: (editingEnv as Environment & {season_id?:number}).season_id,
+                    elevation_m: editingEnv.elevation_m,
+                    avg_temperature_c: editingEnv.avg_temperature_c,
+                    total_rainfall_mm: editingEnv.total_rainfall_mm,
+                    luas_ha: (editingEnv as Environment & {luas_ha?:number}).luas_ha,
+                  } : undefined}
+                  onSubmit={d => editingEnv ? envUpdate.mutate({id:editingEnv.id, d}) : envCreate.mutate(d)}
+                  onCancel={closeModal}
+                  isSubmitting={envCreate.isPending || envUpdate.isPending}
+                />
               )}
 
               {/* Musim Tanam */}
@@ -509,22 +480,6 @@ export default function MasterDataPage() {
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Akhir *</label><input type="date" {...sForm.register("end_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   </div>
                   <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={sCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{sCreate.isPending?"Menyimpan...":"Tambah Musim"}</button></div>
-                </form>
-              )}
-
-              {/* Lokasi */}
-              {activeTab === "locations" && (
-                <form onSubmit={lForm.handleSubmit(d => lCreate.mutate(d))} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...lForm.register("field_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="JTIC002" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Provinsi *</label><input {...lForm.register("province")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Jawa Barat" />{lForm.formState.errors.province && <p className="text-red-500 text-xs mt-1">{lForm.formState.errors.province.message}</p>}</div>
-                  </div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Kebun/Lokasi *</label><input {...lForm.register("field_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kabupaten/Kota</label><input {...lForm.register("regency")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Luas (ha)</label><input type="number" step="0.01" {...lForm.register("area_hectares")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={lCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{lCreate.isPending?"Menyimpan...":"Tambah Lokasi"}</button></div>
                 </form>
               )}
 

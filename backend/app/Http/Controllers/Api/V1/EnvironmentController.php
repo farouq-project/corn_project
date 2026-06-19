@@ -32,34 +32,35 @@ class EnvironmentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'location_id' => ['required', 'exists:locations,id'],
-            'season_id' => ['required', 'exists:seasons,id'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string'],
+            'luas_ha' => ['nullable', 'numeric', 'min:0'],
+            'location_id' => ['nullable', 'exists:locations,id'],
+            'season_id' => ['nullable', 'exists:seasons,id'],
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
             'elevation_m' => ['nullable', 'integer'],
             'irrigation_type' => ['nullable', 'string'],
-            'land_history' => ['nullable', 'string'],
-            'soil_type' => ['nullable', 'string'],
             'total_rainfall_mm' => ['nullable', 'numeric'],
             'avg_temperature_c' => ['nullable', 'numeric'],
-            'planting_date' => ['nullable', 'date'],
-            'harvest_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
         ]);
 
-        // Auto-generate environment code
-        $location = \App\Models\Location::find($data['location_id']);
-        $season = \App\Models\Season::find($data['season_id']);
-        $data['environment_code'] = strtoupper(
-            substr($location->field_code, 0, 4) . '-' . substr($season->season_code, 0, 6)
-        );
-
-        // Ensure uniqueness
-        $count = Environment::where('environment_code', 'like', $data['environment_code'] . '%')->count();
-        if ($count > 0) {
-            $data['environment_code'] .= '-' . ($count + 1);
+        // Auto-generate environment code from name or location+season
+        $baseName = $data['name'] ?? null;
+        if ($baseName) {
+            $slug = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($baseName, 0, 6)));
+        } elseif (!empty($data['location_id']) && !empty($data['season_id'])) {
+            $location = \App\Models\Location::find($data['location_id']);
+            $season = \App\Models\Season::find($data['season_id']);
+            $slug = strtoupper(substr($location->field_code ?? 'ENV', 0, 4) . substr($season->season_code ?? '', 0, 4));
+        } else {
+            $slug = 'ENV';
         }
 
+        $code = $slug . '-' . date('y');
+        $count = Environment::where('environment_code', 'like', $code . '%')->count();
+        $data['environment_code'] = $count > 0 ? $code . '-' . ($count + 1) : $code;
         $data['created_by'] = $request->user()->id;
 
         $environment = Environment::create($data);
@@ -78,14 +79,15 @@ class EnvironmentController extends Controller
     public function update(Request $request, Environment $environment): JsonResponse
     {
         $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string'],
+            'luas_ha' => ['nullable', 'numeric', 'min:0'],
+            'latitude' => ['nullable', 'numeric'],
+            'longitude' => ['nullable', 'numeric'],
+            'elevation_m' => ['nullable', 'integer'],
             'irrigation_type' => ['nullable', 'string'],
-            'land_history' => ['nullable', 'string'],
-            'soil_type' => ['nullable', 'string'],
             'total_rainfall_mm' => ['nullable', 'numeric'],
             'avg_temperature_c' => ['nullable', 'numeric'],
-            'avg_humidity_percent' => ['nullable', 'numeric'],
-            'planting_date' => ['nullable', 'date'],
-            'harvest_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
         ]);
 
