@@ -8,15 +8,6 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import api from "@/lib/axios";
-
-// Spatie may return full Role objects OR plain strings depending on the endpoint.
-// This helper normalises either shape to a plain string.
-function roleName(r: unknown): string {
-  if (!r) return "";
-  if (typeof r === "string") return r;
-  if (typeof r === "object" && r !== null && "name" in r) return String((r as { name: unknown }).name);
-  return String(r);
-}
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -25,9 +16,16 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { formatDateTime } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 
+function roleName(r: unknown): string {
+  if (!r) return "";
+  if (typeof r === "string") return r;
+  if (typeof r === "object" && r !== null && "name" in r) return String((r as { name: unknown }).name);
+  return String(r);
+}
+
 const createSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().email(),
+  name: z.string().min(1, "Nama wajib diisi"),
+  email: z.string().email("Email tidak valid"),
   password: z.string().min(8, "Password minimal 8 karakter"),
   employee_id: z.string().optional(),
   phone: z.string().optional(),
@@ -35,7 +33,25 @@ const createSchema = z.object({
   role: z.string().min(1, "Pilih role"),
 });
 
+const editSchema = z.object({
+  name: z.string().min(1, "Nama wajib diisi"),
+  employee_id: z.string().optional(),
+  phone: z.string().optional(),
+  institution: z.string().optional(),
+  role: z.string().min(1, "Pilih role"),
+  status: z.enum(["active", "inactive", "suspended"]),
+});
+
+const resetPwSchema = z.object({
+  password: z.string().min(8, "Minimal 8 karakter"),
+  password_confirmation: z.string().min(8),
+}).refine(d => d.password === d.password_confirmation, {
+  message: "Konfirmasi password tidak cocok", path: ["password_confirmation"],
+});
+
 type CreateForm = z.infer<typeof createSchema>;
+type EditForm = z.infer<typeof editSchema>;
+type ResetPwForm = z.infer<typeof resetPwSchema>;
 
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
@@ -53,38 +69,57 @@ const roleColors: Record<string, string> = {
   finance_staff: "bg-orange-100 text-orange-700",
 };
 
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
+
 export default function UsersPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [resetPwUser, setResetPwUser] = useState<User | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
     queryFn: () => api.get<{ data: User[] }>("/v1/users", { params: { per_page: 50 } }).then((r) => r.data),
   });
-
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateForm) => api.post("/v1/users", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-      toast.success("Pengguna berhasil dibuat");
-      setIsModalOpen(false);
-      reset();
-    },
-    onError: (error) => toast.error(getApiErrorMessage(error)),
-  });
-
-  const updateStatusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      api.put(`/v1/users/${id}`, { status }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["users"] }); toast.success("Status diperbarui"); },
-    onError: (error) => toast.error(getApiErrorMessage(error)),
-  });
-
   const users = data?.data ?? [];
+
+  // Forms
+  const createForm = useForm<CreateForm>({ resolver: zodResolver(createSchema) as never });
+  const editForm = useForm<EditForm>({ resolver: zodResolver(editSchema) as never });
+  const resetPwForm = useForm<ResetPwForm>({ resolver: zodResolver(resetPwSchema) as never });
+
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: (d: CreateForm) => api.post("/v1/users", d),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["users"] }); toast.success("Pengguna berhasil dibuat"); setIsCreateOpen(false); createForm.reset(); },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
+  // Edit mutation
+  const editMutation = useMutation({
+    mutationFn: ({ id, d }: { id: number; d: EditForm }) => api.put(`/v1/users/${id}`, d),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["users"] }); toast.success("Pengguna berhasil diperbarui"); setEditingUser(null); },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
+  // Reset password mutation
+  const resetPwMutation = useMutation({
+    mutationFn: ({ id, d }: { id: number; d: ResetPwForm }) => api.post(`/v1/users/${id}/reset-password`, d),
+    onSuccess: () => { toast.success("Password berhasil direset"); setResetPwUser(null); resetPwForm.reset(); },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
+  const openEdit = (user: User) => {
+    setEditingUser(user);
+    editForm.reset({
+      name: user.name,
+      employee_id: user.employee_id ?? "",
+      phone: (user as User & { phone?: string }).phone ?? "",
+      institution: (user as User & { institution?: string }).institution ?? "",
+      role: roleName(user.roles?.[0]),
+      status: (user.status as EditForm["status"]) ?? "active",
+    });
+  };
 
   const columns: ColumnDef<User, unknown>[] = [
     {
@@ -105,12 +140,12 @@ export default function UsersPage() {
     {
       header: "ID Karyawan",
       accessorKey: "employee_id",
-      cell: ({ getValue }) => <span className="font-mono text-xs">{getValue() as string ?? "-"}</span>,
+      cell: ({ getValue }) => <span className="font-mono text-xs">{(getValue() as string) ?? "-"}</span>,
     },
     {
       header: "Institusi",
       accessorKey: "institution",
-      cell: ({ getValue }) => <span className="text-xs">{getValue() as string ?? "-"}</span>,
+      cell: ({ getValue }) => <span className="text-xs">{(getValue() as string) ?? "-"}</span>,
     },
     {
       header: "Role",
@@ -139,13 +174,12 @@ export default function UsersPage() {
       id: "actions",
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
-          <button className="p-1.5 rounded hover:bg-blue-50 text-blue-500 transition" title="Edit"><Edit2 className="w-3.5 h-3.5" /></button>
-          <button className="p-1.5 rounded hover:bg-orange-50 text-orange-500 transition" title="Reset Password"><Key className="w-3.5 h-3.5" /></button>
-          {row.original.status === "active" ? (
-            <button onClick={() => updateStatusMutation.mutate({ id: row.original.id, status: "inactive" })} className="p-1.5 rounded hover:bg-red-50 text-red-400 transition text-xs">Nonaktifkan</button>
-          ) : (
-            <button onClick={() => updateStatusMutation.mutate({ id: row.original.id, status: "active" })} className="p-1.5 rounded hover:bg-green-50 text-green-600 transition text-xs">Aktifkan</button>
-          )}
+          <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500 transition" title="Edit">
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={() => { setResetPwUser(row.original); resetPwForm.reset(); }} className="p-1.5 rounded hover:bg-orange-50 text-orange-500 transition" title="Reset Password">
+            <Key className="w-3.5 h-3.5" />
+          </button>
         </div>
       ),
     },
@@ -163,9 +197,8 @@ export default function UsersPage() {
         title="Manajemen Pengguna"
         description="Kelola akun dan hak akses pengguna sistem"
         actions={
-          <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-            <Plus className="w-4 h-4" />
-            Tambah Pengguna
+          <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+            <Plus className="w-4 h-4" /> Tambah Pengguna
           </button>
         }
       />
@@ -186,62 +219,150 @@ export default function UsersPage() {
           <h2 className="font-semibold text-gray-800">Daftar Pengguna</h2>
           <span className="ml-auto text-sm text-gray-400">{users.length} pengguna</span>
         </div>
-        <DataTable
-          data={users}
-          columns={columns}
-          isLoading={isLoading}
-          searchPlaceholder="Cari nama atau email..."
-          emptyMessage="Belum ada pengguna"
-        />
+        <DataTable data={users} columns={columns} isLoading={isLoading} searchPlaceholder="Cari nama atau email..." emptyMessage="Belum ada pengguna" />
       </div>
 
-      {isModalOpen && (
+      {/* ── Create Modal ── */}
+      {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl">
             <div className="flex items-center justify-between p-6 border-b">
               <h3 className="text-lg font-semibold">Tambah Pengguna Baru</h3>
-              <button onClick={() => { setIsModalOpen(false); reset(); }} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
+              <button onClick={() => { setIsCreateOpen(false); createForm.reset(); }} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
             </div>
-            <form onSubmit={handleSubmit((d) => createMutation.mutate(d))} className="p-6 space-y-4">
+            <form onSubmit={createForm.handleSubmit(d => createMutation.mutate(d))} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap *</label>
-                  <input {...register("name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
+                  <input {...createForm.register("name")} className={inputCls} />
+                  {createForm.formState.errors.name && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.name.message}</p>}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">ID Karyawan</label>
-                  <input {...register("employee_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="EMP001" />
+                  <input {...createForm.register("employee_id")} className={inputCls} placeholder="EMP001" />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input {...register("email")} type="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+                <input {...createForm.register("email")} type="email" className={inputCls} />
+                {createForm.formState.errors.email && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.email.message}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                <input {...register("password")} type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>}
+                <input {...createForm.register("password")} type="password" className={inputCls} />
+                {createForm.formState.errors.password && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.password.message}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Institusi</label>
-                  <input {...register("institution")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="UNPAD" />
+                  <input {...createForm.register("institution")} className={inputCls} placeholder="UNPAD" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                  <select {...register("role")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                  <select {...createForm.register("role")} className={inputCls}>
                     <option value="">-- Pilih Role --</option>
                     {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
-                  {errors.role && <p className="text-red-500 text-xs mt-1">{errors.role.message}</p>}
+                  {createForm.formState.errors.role && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.role.message}</p>}
                 </div>
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-100">
-                <button type="button" onClick={() => { setIsModalOpen(false); reset(); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
-                <button type="submit" disabled={isSubmitting || createMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
-                  {isSubmitting ? "Menyimpan..." : "Buat Pengguna"}
+                <button type="button" onClick={() => { setIsCreateOpen(false); createForm.reset(); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
+                <button type="submit" disabled={createMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
+                  {createMutation.isPending ? "Menyimpan..." : "Buat Pengguna"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Modal ── */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h3 className="text-lg font-semibold">Edit Pengguna</h3>
+                <p className="text-sm text-gray-400 mt-0.5">{editingUser.email}</p>
+              </div>
+              <button onClick={() => setEditingUser(null)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={editForm.handleSubmit(d => editMutation.mutate({ id: editingUser.id, d }))} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap *</label>
+                  <input {...editForm.register("name")} className={inputCls} />
+                  {editForm.formState.errors.name && <p className="text-red-500 text-xs mt-1">{editForm.formState.errors.name.message}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Karyawan</label>
+                  <input {...editForm.register("employee_id")} className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">No. Telepon</label>
+                  <input {...editForm.register("phone")} className={inputCls} placeholder="+62..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Institusi</label>
+                  <input {...editForm.register("institution")} className={inputCls} placeholder="UNPAD" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                  <select {...editForm.register("role")} className={inputCls}>
+                    {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select {...editForm.register("status")} className={inputCls}>
+                    <option value="active">Aktif</option>
+                    <option value="inactive">Nonaktif</option>
+                    <option value="suspended">Ditangguhkan</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
+                <button type="submit" disabled={editMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
+                  {editMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset Password Modal ── */}
+      {resetPwUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h3 className="text-lg font-semibold">Reset Password</h3>
+                <p className="text-sm text-gray-400 mt-0.5">{resetPwUser.name}</p>
+              </div>
+              <button onClick={() => { setResetPwUser(null); resetPwForm.reset(); }} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={resetPwForm.handleSubmit(d => resetPwMutation.mutate({ id: resetPwUser.id, d }))} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru *</label>
+                <input {...resetPwForm.register("password")} type="password" className={inputCls} />
+                {resetPwForm.formState.errors.password && <p className="text-red-500 text-xs mt-1">{resetPwForm.formState.errors.password.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Konfirmasi Password *</label>
+                <input {...resetPwForm.register("password_confirmation")} type="password" className={inputCls} />
+                {resetPwForm.formState.errors.password_confirmation && <p className="text-red-500 text-xs mt-1">{resetPwForm.formState.errors.password_confirmation.message}</p>}
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => { setResetPwUser(null); resetPwForm.reset(); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
+                <button type="submit" disabled={resetPwMutation.isPending} className="flex-1 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition">
+                  {resetPwMutation.isPending ? "Mereset..." : "Reset Password"}
                 </button>
               </div>
             </form>

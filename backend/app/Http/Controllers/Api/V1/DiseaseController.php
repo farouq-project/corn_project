@@ -67,13 +67,9 @@ class DiseaseController extends Controller
 
     public function destroy(DiseaseEvaluation $evaluation): JsonResponse
     {
-        if ($evaluation->status === 'approved') {
-            return response()->json(['message' => 'Evaluasi yang sudah disetujui tidak dapat dihapus.'], 422);
-        }
-
         AuditService::logDeleted($evaluation);
         $evaluation->scores()->delete();
-        $evaluation->delete();
+        $evaluation->forceDelete(); // hard delete so it's truly gone
 
         return response()->json(['message' => 'Evaluasi berhasil dihapus.']);
     }

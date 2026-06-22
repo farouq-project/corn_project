@@ -42,8 +42,8 @@ const genotypeSchema = z.object({
 const trialSchema = z.object({
   trial_code: z.string().min(1),
   trial_name: z.string().min(1),
-  season_id: z.preprocess(Number, z.number().min(1)),
-  location_id: z.preprocess(Number, z.number().min(1)),
+  environment_id: z.coerce.number().optional().nullable(),
+  planting_date: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
   status: z.enum(["planned", "active", "harvested", "completed", "cancelled"]).default("planned"),
@@ -129,8 +129,8 @@ export default function MasterDataPage() {
   const gCreate = useMutation({ mutationFn: (d: z.infer<typeof genotypeSchema>) => api.post("/v1/genotypes", d), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const gBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/genotypes/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
-  const tCreate = useMutation({ mutationFn: (d: z.infer<typeof trialSchema>) => api.post("/v1/trials", d), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Trial ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const tBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/trials/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Trial dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
+  const tCreate = useMutation({ mutationFn: (d: z.infer<typeof trialSchema>) => api.post("/v1/trials", d), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const tBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/trials/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
   const cCreate = useMutation({ mutationFn: (d: z.infer<typeof charSchema>) => api.post("/v1/phenotyping/characteristics", d), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const cUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: Partial<z.infer<typeof charSchema>>}) => api.put(`/v1/phenotyping/characteristics/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
@@ -176,7 +176,7 @@ export default function MasterDataPage() {
 
   const tabs: {id: TabType; label: string; icon: React.FC<{className?:string}>; count: number}[] = [
     { id: "genotypes",      label: "Genotipe",        icon: Dna,        count: genotypes.length },
-    { id: "trials",         label: "Trial",            icon: BookOpen,   count: trials.length },
+    { id: "trials",         label: "Research Plan",    icon: BookOpen,   count: trials.length },
     { id: "characteristics",label: "Pengamatan",       icon: Microscope, count: chars.length },
     { id: "environments",   label: "Lingkungan",       icon: MapPin,     count: envs.length },
     { id: "replications",   label: "Ulangan (R)",      icon: Repeat2,    count: trials.length },
@@ -195,8 +195,9 @@ export default function MasterDataPage() {
 
   const tCols: ColumnDef<Trial, unknown>[] = [
     { header: "Kode", accessorKey: "trial_code", cell: ({getValue}) => <span className="font-mono font-bold text-green-700">{getValue() as string}</span> },
-    { header: "Nama Trial", accessorKey: "trial_name" },
-    { header: "Musim", accessorKey: "season.season_name", cell: ({row}) => <span className="text-xs">{row.original.season?.season_name ?? "-"}</span> },
+    { header: "Nama Research Plan", accessorKey: "trial_name" },
+    { header: "Lingkungan", id: "env", cell: ({row}) => <span className="text-xs">{(row.original as Trial & {environment?: {name?: string; environment_code?: string}}).environment?.name ?? row.original.location?.field_name ?? "-"}</span> },
+    { header: "Target Tanam", accessorKey: "planting_date", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? formatDate(getValue() as string) : "—"}</span> },
     { header: "Desain", accessorKey: "layout_design", cell: ({getValue}) => <span className="text-xs">{getValue() as string}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
   ];
@@ -238,7 +239,7 @@ export default function MasterDataPage() {
 
   const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","seasons","storage_units"];
   const modalLabel: Record<TabType, string> = {
-    genotypes: "Genotipe", trials: "Trial", characteristics: editingChar ? "Edit Karakter" : "Karakter",
+    genotypes: "Genotipe", trials: "Research Plan", characteristics: editingChar ? "Edit Karakter" : "Karakter",
     environments: editingEnv ? "Edit Lingkungan" : "Lingkungan", replications: "Ulangan",
     seasons: "Musim Tanam", storage_units: "Unit Penyimpanan",
   };
@@ -409,19 +410,28 @@ export default function MasterDataPage() {
               {activeTab === "trials" && (
                 <form onSubmit={tForm.handleSubmit(d => tCreate.mutate(d))} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode Trial *</label><input {...tForm.register("trial_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="T-MH2026-001" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...tForm.register("trial_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="RP-2026-001" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select {...tForm.register("status")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["planned","Direncanakan"],["active","Aktif"],["harvested","Dipanen"],["completed","Selesai"],["cancelled","Dibatalkan"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Trial *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Musim *</label><select {...tForm.register("season_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{seasonsList?.map(s => <option key={s.id} value={s.id}>{s.season_name}</option>)}</select></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Lokasi *</label><select {...tForm.register("location_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{locationsList?.map(l => <option key={l.id} value={l.id}>{l.field_name}</option>)}</select></div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
+                      <select {...tForm.register("environment_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="">-- Pilih Lingkungan --</option>
+                        {envs.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Target Penanaman</label>
+                      <input type="date" {...tForm.register("planting_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Ulangan</label><input type="number" min="1" max="20" {...tForm.register("replications")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={tCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{tCreate.isPending?"Menyimpan...":"Tambah Trial"}</button></div>
+                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={tCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{tCreate.isPending?"Menyimpan...":"Buat Research Plan"}</button></div>
                 </form>
               )}
 

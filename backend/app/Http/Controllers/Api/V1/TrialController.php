@@ -34,8 +34,9 @@ class TrialController extends Controller
         $data = $request->validate([
             'trial_code' => ['required', 'string', 'max:30', 'unique:trials'],
             'trial_name' => ['required', 'string', 'max:255'],
-            'season_id' => ['required', 'exists:seasons,id'],
-            'location_id' => ['required', 'exists:locations,id'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
+            'season_id' => ['nullable', 'exists:seasons,id'],
+            'location_id' => ['nullable', 'exists:locations,id'],
             'trial_type_id' => ['nullable', 'exists:trial_types,id'],
             'objective' => ['nullable', 'string'],
             'layout_design' => ['required', 'in:RCBD,CRD,split_plot,factorial,augmented,alpha_lattice'],
@@ -48,6 +49,15 @@ class TrialController extends Controller
             'notes' => ['nullable', 'string'],
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
+
+        // Derive location_id and season_id from environment if provided
+        if (!empty($data['environment_id'])) {
+            $env = \App\Models\Environment::find($data['environment_id']);
+            if ($env) {
+                $data['location_id'] = $data['location_id'] ?? $env->location_id;
+                $data['season_id'] = $data['season_id'] ?? $env->season_id;
+            }
+        }
 
         $data['created_by'] = $request->user()->id;
         if (empty($data['principal_researcher_id'])) {
@@ -72,8 +82,9 @@ class TrialController extends Controller
     {
         $data = $request->validate([
             'trial_name' => ['sometimes', 'string'],
-            'season_id' => ['sometimes', 'exists:seasons,id'],
-            'location_id' => ['sometimes', 'exists:locations,id'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
+            'season_id' => ['nullable', 'exists:seasons,id'],
+            'location_id' => ['nullable', 'exists:locations,id'],
             'trial_type_id' => ['nullable', 'exists:trial_types,id'],
             'objective' => ['nullable', 'string'],
             'layout_design' => ['sometimes', 'in:RCBD,CRD,split_plot,factorial,augmented,alpha_lattice'],

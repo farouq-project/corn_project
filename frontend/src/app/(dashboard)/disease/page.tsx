@@ -265,15 +265,13 @@ export default function DiseasePage() {
               <CheckCircle2 className="w-3.5 h-3.5" />
             </button>
           )}
-          {row.original.status !== "approved" && (
-            <button
-              onClick={() => { if (confirm(`Hapus evaluasi ${row.original.evaluation_code}?`)) deleteMutation.mutate(row.original.id); }}
-              className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
-              title="Hapus"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          <button
+            onClick={() => { if (confirm(`Hapus evaluasi ${row.original.evaluation_code}? Tindakan ini tidak dapat dibatalkan.`)) deleteMutation.mutate(row.original.id); }}
+            className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
+            title="Hapus"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       ),
     },
