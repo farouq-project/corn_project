@@ -12,7 +12,7 @@ class Environment extends Model
 
     protected $fillable = [
         'environment_code', 'name', 'address', 'luas_ha',
-        'location_id', 'season_id',
+        'location_id', 'season_id', 'season_name', 'perlakuan',
         'latitude', 'longitude', 'elevation_m',
         'irrigation_type', 'land_history', 'soil_type',
         'total_rainfall_mm', 'avg_temperature_c', 'avg_humidity_percent',

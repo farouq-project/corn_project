@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\StorageController;
 use App\Http\Controllers\Api\V1\TrialController;
 use App\Http\Controllers\Api\V1\TrialPlotController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\VarietyCandidateController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,6 +40,9 @@ Route::prefix('v1')->group(function () {
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
+
+        // General file upload (receipts, activity photos, etc.)
+        Route::post('media/upload', [MediaController::class, 'upload']);
 
         // Auth
         Route::prefix('auth')->group(function () {
@@ -263,6 +267,7 @@ Route::prefix('v1')->group(function () {
 
             Route::get('expenses', [ExpenseController::class, 'expenseIndex']);
             Route::post('expenses', [ExpenseController::class, 'expenseStore']);
+            Route::post('expenses/batch', [ExpenseController::class, 'batchStore']);
             Route::get('expenses/{expense}', [ExpenseController::class, 'expenseShow']);
             Route::put('expenses/{expense}', [ExpenseController::class, 'expenseUpdate']);
             Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approveExpense']);

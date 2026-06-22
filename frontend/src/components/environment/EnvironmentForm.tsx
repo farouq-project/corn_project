@@ -12,11 +12,12 @@ const schema = z.object({
   address: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
-  season_id: z.coerce.number().optional().nullable(),
+  season_name: z.string().optional(), // free-text season, no FK
+  perlakuan: z.string().optional(),
   elevation_m: z.coerce.number().int().optional().nullable(),
   avg_temperature_c: z.coerce.number().optional().nullable(),
   total_rainfall_mm: z.coerce.number().optional().nullable(),
-  luas_ha: z.coerce.number().optional().nullable(),
+  luas_ha: z.coerce.number().optional().nullable(), // stored as meters now (label changed)
   notes: z.string().optional(),
 });
 
@@ -24,7 +25,7 @@ export type EnvironmentFormData = z.infer<typeof schema>;
 
 interface Props {
   defaultValues?: Partial<EnvironmentFormData>;
-  seasons: Array<{ id: number; season_name: string }>;
+  seasons?: Array<{ id: number; season_name: string }>; // kept for backward compat, unused
   onSubmit: (data: EnvironmentFormData) => void;
   onCancel: () => void;
   isSubmitting?: boolean;
@@ -131,46 +132,30 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
     });
   };
 
-  // Fetch weather via Open-Meteo (free, no key needed)
+  // Fetch weather via Open-Meteo forecast API (free, no key)
   const fetchWeather = async (latVal: number, lngVal: number) => {
     setFetchingWeather(true);
     try {
-      const url = `https://api.open-meteo.com/v1/climate?latitude=${latVal}&longitude=${lngVal}&start_year=2020&end_year=2023&models=CMIP6_MRI_ESM2_0&daily=temperature_2m_mean,precipitation_sum`;
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${latVal}&longitude=${lngVal}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=16&timezone=auto`;
       const res = await fetch(url);
+      if (!res.ok) throw new Error("Weather API failed");
       const data = await res.json();
-      if (data.daily) {
-        const temps: number[] = data.daily.temperature_2m_mean?.filter((v: number | null) => v !== null) ?? [];
-        const rains: number[] = data.daily.precipitation_sum?.filter((v: number | null) => v !== null) ?? [];
-        if (temps.length > 0) {
-          setValue("avg_temperature_c", Math.round((temps.reduce((a, b) => a + b, 0) / temps.length) * 10) / 10);
-        }
-        if (rains.length > 0) {
-          // Annual total from daily average
-          const dailyAvg = rains.reduce((a, b) => a + b, 0) / rains.length;
-          setValue("total_rainfall_mm", Math.round(dailyAvg * 365));
-        }
+      const maxTemps: number[] = data.daily?.temperature_2m_max ?? [];
+      const minTemps: number[] = data.daily?.temperature_2m_min ?? [];
+      const rains: number[] = (data.daily?.precipitation_sum ?? []).filter((v: number | null) => v !== null);
+
+      if (maxTemps.length > 0) {
+        const avgTemp = maxTemps.map((max: number, i: number) => (max + (minTemps[i] ?? max)) / 2)
+          .reduce((a: number, b: number) => a + b, 0) / maxTemps.length;
+        setValue("avg_temperature_c", Math.round(avgTemp * 10) / 10);
+      }
+      if (rains.length > 0) {
+        // Estimate annual rainfall from 16-day daily average
+        const dailyAvg = rains.reduce((a: number, b: number) => a + b, 0) / rains.length;
+        setValue("total_rainfall_mm", Math.round(dailyAvg * 365));
       }
     } catch {
-      // Fallback: use forecast API
-      try {
-        const url2 = `https://api.open-meteo.com/v1/forecast?latitude=${latVal}&longitude=${lngVal}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&forecast_days=16&timezone=auto`;
-        const res2 = await fetch(url2);
-        const data2 = await res2.json();
-        if (data2.daily) {
-          const maxTemps: number[] = data2.daily.temperature_2m_max ?? [];
-          const minTemps: number[] = data2.daily.temperature_2m_min ?? [];
-          const rains: number[] = data2.daily.precipitation_sum ?? [];
-          if (maxTemps.length > 0) {
-            const avgTemp = maxTemps.map((max: number, i: number) => (max + (minTemps[i] ?? max)) / 2)
-              .reduce((a: number, b: number) => a + b, 0) / maxTemps.length;
-            setValue("avg_temperature_c", Math.round(avgTemp * 10) / 10);
-          }
-          if (rains.length > 0) {
-            const dailyAvg = rains.reduce((a: number, b: number) => a + b, 0) / rains.length;
-            setValue("total_rainfall_mm", Math.round(dailyAvg * 365));
-          }
-        }
-      } catch { /* ignore */ }
+      // silent fail — user can fill manually
     } finally {
       setFetchingWeather(false);
     }
@@ -239,19 +224,30 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
         )}
       </div>
 
-      {/* Musim */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Musim</label>
-        <select {...register("season_id")} className={inputCls}>
-          <option value="">-- Pilih Musim --</option>
-          {seasons.map(s => <option key={s.id} value={s.id}>{s.season_name}</option>)}
-        </select>
+      {/* Musim — manual text, optional */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Musim <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+          <input {...register("season_name")} placeholder="contoh: MH 2026/2027"
+            className={inputCls} list="season-suggestions" />
+          <datalist id="season-suggestions">
+            {["MH 2026/2027","MK 2026","MH 2025/2026","MK 2025"].map(s => <option key={s} value={s} />)}
+          </datalist>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Perlakuan <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+          <input {...register("perlakuan")} placeholder="Normal / Naungan / Kekeringan"
+            className={inputCls} list="perlakuan-suggestions" />
+          <datalist id="perlakuan-suggestions">
+            {["Normal","Naungan","Kekeringan","Stres Garam","Genangan"].map(p => <option key={p} value={p} />)}
+          </datalist>
+        </div>
       </div>
 
       {/* Auto-detected fields */}
       <div className="bg-gray-50 rounded-lg p-4 space-y-3 border border-gray-100">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data Otomatis dari GPS</p>
+          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Data dari GPS</p>
           {lat && lng && (
             <button type="button" onClick={refetchAll} disabled={fetchingWeather}
               className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 disabled:opacity-50">
@@ -267,25 +263,30 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Suhu Rata (°C)</label>
-            <input type="number" step="0.1" {...register("avg_temperature_c")} placeholder="Auto" className={inputCls} />
+            <input type="number" step="0.1" {...register("avg_temperature_c")}
+              placeholder={fetchingWeather ? "Mengambil..." : "Auto"} className={inputCls} />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Curah Hujan (mm/thn)</label>
-            <input type="number" step="0.1" {...register("total_rainfall_mm")} placeholder="Auto" className={inputCls} />
+            <input type="number" step="0.1" {...register("total_rainfall_mm")}
+              placeholder={fetchingWeather ? "Mengambil..." : "Auto"} className={inputCls} />
           </div>
         </div>
         {!lat && !lng && (
           <p className="text-xs text-gray-400">Klik "Lokasi Saat Ini" atau masukkan koordinat GPS untuk mengisi otomatis</p>
         )}
         {fetchingWeather && (
-          <p className="text-xs text-blue-500">Mengambil data iklim dari Open-Meteo...</p>
+          <p className="text-xs text-blue-500 flex items-center gap-1">
+            <RefreshCw className="w-3 h-3 animate-spin" /> Mengambil data iklim dari Open-Meteo...
+          </p>
         )}
       </div>
 
       {/* Luas */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Luas (ha)</label>
-        <input type="number" step="0.01" {...register("luas_ha")} placeholder="contoh: 2.5" className={inputCls} />
+        <label className="block text-sm font-medium text-gray-700 mb-1">Luas (m²)</label>
+        <input type="number" step="1" {...register("luas_ha")} placeholder="contoh: 2500" className={inputCls} />
+        <p className="text-xs text-gray-400 mt-0.5">Masukkan luas lahan dalam meter persegi</p>
       </div>
 
       {/* Notes */}

@@ -461,15 +461,16 @@ export default function MasterDataPage() {
                   seasons={seasonsList ?? []}
                   editMode={!!editingEnv}
                   defaultValues={editingEnv ? {
-                    name: (editingEnv as Environment & {name?:string}).name ?? "",
-                    address: (editingEnv as Environment & {address?:string}).address ?? "",
+                    name: editingEnv.name ?? "",
+                    address: editingEnv.address ?? "",
                     latitude: editingEnv.latitude,
                     longitude: editingEnv.longitude,
-                    season_id: (editingEnv as Environment & {season_id?:number}).season_id,
+                    season_name: (editingEnv as Environment & {season_name?:string}).season_name ?? "",
+                    perlakuan: (editingEnv as Environment & {perlakuan?:string}).perlakuan ?? "",
                     elevation_m: editingEnv.elevation_m,
                     avg_temperature_c: editingEnv.avg_temperature_c,
                     total_rainfall_mm: editingEnv.total_rainfall_mm,
-                    luas_ha: (editingEnv as Environment & {luas_ha?:number}).luas_ha,
+                    luas_ha: editingEnv.luas_ha,
                   } : undefined}
                   onSubmit={d => editingEnv ? envUpdate.mutate({id:editingEnv.id, d}) : envCreate.mutate(d)}
                   onCancel={closeModal}

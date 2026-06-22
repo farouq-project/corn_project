@@ -38,7 +38,9 @@ class FieldActivityController extends Controller
             'trial_id' => ['nullable', 'exists:trials,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
             'genotype_id' => ['nullable', 'exists:genotypes,id'],
-            'activity_type' => ['required', 'in:planting,pollination,fertilizer_application,irrigation,pesticide_application,harvesting,drone_flight,disease_observation,sampling,soil_preparation,thinning,weeding,monitoring,other'],
+            'activity_type' => ['required', 'in:planting,pollination,fertilizer_application,irrigation,pesticide_application,harvesting,drone_flight,disease_observation,sampling,soil_preparation,thinning,weeding,monitoring,logbook,other'],
+            'photo_urls' => ['nullable', 'array'],
+            'photo_urls.*' => ['nullable', 'string'],
             'activity_title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'activity_date' => ['required', 'date'],
@@ -54,7 +56,10 @@ class FieldActivityController extends Controller
 
         $data['activity_code'] = 'ACT-' . date('Ymd') . '-' . strtoupper(Str::random(6));
         $data['user_id'] = $request->user()->id;
-        $data['photos'] = [];
+
+        // Accept pre-uploaded photo URLs (from /v1/media/upload) or multipart file uploads
+        $data['photos'] = $data['photo_urls'] ?? [];
+        unset($data['photo_urls']);
 
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $photo) {

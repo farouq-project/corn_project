@@ -18,6 +18,7 @@ import {
   CalendarClock,
   Award,
   Microscope,
+  ClipboardList,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -36,6 +37,7 @@ const navigation = [
       { name: "Karakteristik", href: "/pengamatan/karakteristik", icon: Microscope },
       { name: "Penyakit", href: "/disease", icon: Bug },
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
+      { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
     ],
   },
   {

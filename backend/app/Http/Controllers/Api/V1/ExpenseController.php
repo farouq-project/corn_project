@@ -104,6 +104,67 @@ class ExpenseController extends Controller
         return response()->json($expense->load(['category', 'submitter']), 201);
     }
 
+    /**
+     * Batch create multiple expense rows from one form submission.
+     * Shared fields (trial_id, payment_date, payment_method, receipt_urls, category_name)
+     * are applied to all items; each item provides title, vendor, and amount.
+     */
+    public function batchStore(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'trial_id' => ['nullable', 'exists:trials,id'],
+            'budget_id' => ['nullable', 'exists:budgets,id'],
+            'payment_date' => ['required', 'date'],
+            'payment_method' => ['nullable', 'string'],
+            'category_name' => ['nullable', 'string', 'max:100'],
+            'receipt_urls' => ['nullable', 'array'],
+            'receipt_urls.*' => ['nullable', 'string'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.title' => ['required', 'string', 'max:255'],
+            'items.*.vendor' => ['nullable', 'string', 'max:255'],
+            'items.*.amount' => ['required', 'numeric', 'min:0'],
+            'items.*.description' => ['nullable', 'string'],
+        ]);
+
+        // Resolve or create category
+        $categoryId = null;
+        if (!empty($data['category_name'])) {
+            $category = ExpenseCategory::firstOrCreate(
+                ['category_name' => $data['category_name']],
+                ['color' => '#6366f1', 'is_active' => true]
+            );
+            $categoryId = $category->id;
+        }
+
+        $created = [];
+        foreach ($data['items'] as $item) {
+            $expense = Expense::create([
+                'expense_code' => 'EXP-' . date('Ym') . '-' . strtoupper(Str::random(6)),
+                'category_id' => $categoryId,
+                'category_name_custom' => $data['category_name'] ?? null,
+                'trial_id' => $data['trial_id'] ?? null,
+                'budget_id' => $data['budget_id'] ?? null,
+                'title' => $item['title'],
+                'description' => $item['description'] ?? null,
+                'amount' => $item['amount'],
+                'payment_date' => $data['payment_date'],
+                'vendor' => $item['vendor'] ?? null,
+                'payment_method' => $data['payment_method'] ?? null,
+                'attachments' => $data['receipt_urls'] ?? [],
+                'submitted_by' => $request->user()->id,
+                'approval_status' => 'pending',
+            ]);
+            AuditService::logCreated($expense);
+            $created[] = $expense->id;
+        }
+
+        return response()->json([
+            'message' => count($created) . ' pengeluaran berhasil dicatat.',
+            'count' => count($created),
+            'ids' => $created,
+        ], 201);
+    }
+
     public function expenseShow(Expense $expense): JsonResponse
     {
         return response()->json($expense->load(['category', 'trial', 'budget', 'submitter', 'approver']));
