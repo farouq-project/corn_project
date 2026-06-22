@@ -225,7 +225,8 @@ Route::prefix('v1')->group(function () {
         });
 
         // Field Activities
-        Route::apiResource('field-activities', FieldActivityController::class);
+        Route::apiResource('field-activities', FieldActivityController::class)
+            ->parameters(['field-activities' => 'activity']);
         Route::post('field-activities/{activity}/approve', [FieldActivityController::class, 'approve']);
 
         // ── Import Pipeline ────────────────────────────────────────────────────

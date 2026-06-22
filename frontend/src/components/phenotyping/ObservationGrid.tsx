@@ -38,7 +38,7 @@ interface RowData {
 
 const columnHelper = createColumnHelper<RowData>();
 
-const DEFAULT_PINNED_COLUMNS = ["plot_no", "genotype_code", "genotype_name", "environment_code", "replication"];
+const DEFAULT_PINNED_COLUMNS: string[] = []; // no columns pinned by default
 
 const STATIC_COLUMN_LABELS: Record<string, string> = {
   plot_no: "No Plot",

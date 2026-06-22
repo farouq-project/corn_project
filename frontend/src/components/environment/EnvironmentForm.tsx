@@ -8,7 +8,7 @@ import { MapPin, Navigation, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
-  name: z.string().min(1, "Nama lingkungan wajib diisi"),
+  name: z.string().min(1, "Nama kebun percobaan wajib diisi"),
   address: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
@@ -172,9 +172,9 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Nama Lingkungan */}
+      {/* Nama Kebun Percobaan */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lingkungan *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kebun Percobaan *</label>
         <input {...register("name")} placeholder="contoh: Kebun Percobaan Normal 2026" className={inputCls} />
         {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name.message}</p>}
       </div>
@@ -228,18 +228,15 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Musim <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
-          <input {...register("season_name")} placeholder="contoh: MH 2026/2027"
-            className={inputCls} list="season-suggestions" />
-          <datalist id="season-suggestions">
-            {["MH 2026/2027","MK 2026","MH 2025/2026","MK 2025"].map(s => <option key={s} value={s} />)}
-          </datalist>
+          <input {...register("season_name")} placeholder="contoh: Musim Hujan 2026"
+            className={inputCls} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Perlakuan <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
           <input {...register("perlakuan")} placeholder="Normal / Naungan / Kekeringan"
             className={inputCls} list="perlakuan-suggestions" />
           <datalist id="perlakuan-suggestions">
-            {["Normal","Naungan","Kekeringan","Stres Garam","Genangan"].map(p => <option key={p} value={p} />)}
+            {["Normal","Naungan","Kekeringan","Genangan"].map(p => <option key={p} value={p} />)}
           </datalist>
         </div>
       </div>
