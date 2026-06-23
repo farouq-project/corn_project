@@ -99,6 +99,7 @@ export default function MasterDataPage() {
   const [showGenoImport, setShowGenoImport] = useState(false);
   const [genoImportResult, setGenoImportResult] = useState<{created:number;updated:number;skipped:number} | null>(null);
   const [editingTrial, setEditingTrial] = useState<Trial | null>(null);
+  const [genoPageSize, setGenoPageSize] = useState<number | "all">("all");
   const [repExpanded, setRepExpanded] = useState<Set<number>>(new Set());
   const [repEditing, setRepEditing] = useState<number | null>(null);
   const [repEditVal, setRepEditVal] = useState(3);
@@ -108,13 +109,19 @@ export default function MasterDataPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
-  const { data: genotypesRes, isLoading: gLoading } = useQuery({ queryKey: ["genotypes"], queryFn: () => api.get<{data:Genotype[]}>("/v1/genotypes?per_page=200").then(r => r.data) });
+  const genoPerPageParam = genoPageSize === "all" ? 2000 : genoPageSize;
+  const { data: genotypesRes, isLoading: gLoading } = useQuery({
+    queryKey: ["genotypes", "master-data", genoPageSize],
+    queryFn: () => api.get<{data:Genotype[]}>(`/v1/genotypes?per_page=${genoPerPageParam}`).then(r => r.data),
+    staleTime: 0,
+    refetchOnMount: true,
+  });
   const genotypes: Genotype[] = genotypesRes?.data ?? [];
 
-  const { data: trialsRes, isLoading: tLoading } = useQuery({ queryKey: ["trials"], queryFn: () => api.get<{data:Trial[]}>("/v1/trials?per_page=100").then(r => r.data) });
+  const { data: trialsRes, isLoading: tLoading } = useQuery({ queryKey: ["trials", "master-data"], queryFn: () => api.get<{data:Trial[]}>("/v1/trials?per_page=100").then(r => r.data), staleTime: 0, refetchOnMount: true });
   const trials: Trial[] = trialsRes?.data ?? [];
 
-  const { data: charsRes, isLoading: cLoading } = useQuery({ queryKey: ["characteristics-all"], queryFn: () => api.get<Characteristic[]>("/v1/phenotyping/characteristics").then(r => r.data) });
+  const { data: charsRes, isLoading: cLoading } = useQuery({ queryKey: ["characteristics-all", "master-data"], queryFn: () => api.get<Characteristic[]>("/v1/phenotyping/characteristics").then(r => r.data), staleTime: 0, refetchOnMount: true });
   const chars: Characteristic[] = charsRes ?? [];
 
   const { data: envsRes, isLoading: eLoading } = useQuery({ queryKey: ["environments", "master-data-100"], queryFn: () => api.get<{data:Environment[]}>("/v1/environments?per_page=100").then(r => r.data), staleTime: 0 });
@@ -386,7 +393,21 @@ export default function MasterDataPage() {
 
         <div className="p-6">
           {/* ── Genotipe ── */}
-          {activeTab === "genotypes" && <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} />}
+          {activeTab === "genotypes" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 justify-end">
+                <label className="text-xs text-gray-500">Tampilkan:</label>
+                <select value={String(genoPageSize)} onChange={e => setGenoPageSize(e.target.value === "all" ? "all" : Number(e.target.value))}
+                  className="px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
+                  <option value="all">Semua ({genotypes.length})</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </div>
+              <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} />
+            </div>
+          )}
 
           {/* ── Trial ── */}
           {activeTab === "trials" && <DataTable data={trials} columns={tCols} isLoading={tLoading} searchPlaceholder="Cari kode atau nama research plan..." emptyMessage="Belum ada research plan" getRowId={r => String(r.id)} onBulkDelete={rows => tBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={tBulkDel.isPending} />}

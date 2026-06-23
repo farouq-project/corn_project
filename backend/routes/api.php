@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\TrialController;
 use App\Http\Controllers\Api\V1\TrialPlotController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\MediaController;
+use App\Http\Controllers\Api\V1\StorageMonitorController;
 use App\Http\Controllers\Api\V1\VarietyCandidateController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,12 +38,19 @@ Route::prefix('v1')->group(function () {
     Route::get('genotypes/import-template', [GenotypeController::class, 'downloadTemplate']);
     Route::get('phenotyping/import/template', [PhenotypingImportController::class, 'downloadTemplate']);
     Route::get('phenotyping/characteristics/import/template', [CharacteristicController::class, 'downloadTemplate']);
+    Route::get('storage-monitor/template', [StorageMonitorController::class, 'downloadTemplate']);
 
     // Protected routes
     Route::middleware('auth:sanctum')->group(function () {
 
         // General file upload (receipts, activity photos, etc.)
         Route::post('media/upload', [MediaController::class, 'upload']);
+
+        // Storage Monitor
+        Route::get('storage-monitor', [StorageMonitorController::class, 'index']);
+        Route::post('storage-monitor', [StorageMonitorController::class, 'store']);
+        Route::delete('storage-monitor/{storageMonitorEntry}', [StorageMonitorController::class, 'destroy']);
+        Route::post('storage-monitor/import', [StorageMonitorController::class, 'import']);
 
         // Auth
         Route::prefix('auth')->group(function () {

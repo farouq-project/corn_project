@@ -8,6 +8,7 @@ import {
   Package,
   Wallet,
   Map,
+  Archive,
   Users,
   Settings,
   Leaf,
@@ -38,6 +39,7 @@ const navigation = [
       { name: "Penyakit", href: "/disease", icon: Bug },
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
+      { name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive },
     ],
   },
   {

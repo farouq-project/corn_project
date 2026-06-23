@@ -241,7 +241,7 @@ export default function DataPengamatanPage() {
           onChange={(e) => { setTrialFilter(e.target.value); setEnvironmentFilter(""); }}
           className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-full sm:w-auto"
         >
-          <option value="">Semua Trial</option>
+          <option value="">Semua Research Plan</option>
           {trials.map((t) => <option key={t.id} value={t.id}>{t.trial_name}</option>)}
         </select>
 
@@ -283,7 +283,7 @@ export default function DataPengamatanPage() {
             <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
               {/* Trial selector (drives filtered envs + rep options) */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project / Trial</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Research Plan</label>
                 <select
                   value={modalTrial}
                   onChange={(e) => {
@@ -293,7 +293,7 @@ export default function DataPengamatanPage() {
                   }}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="">Semua Trial</option>
+                  <option value="">Semua Research Plan</option>
                   {trials.map((t) => <option key={t.id} value={t.id}>{t.trial_name}</option>)}
                 </select>
                 {selectedTrialObj && (

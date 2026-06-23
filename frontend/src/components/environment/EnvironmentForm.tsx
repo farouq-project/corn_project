@@ -232,11 +232,11 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
             className={inputCls} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Perlakuan <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
-          <input {...register("perlakuan")} placeholder="Normal / Naungan / Kekeringan"
+          <label className="block text-sm font-medium text-gray-700 mb-1">Environment <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+          <input {...register("perlakuan")} placeholder="Normal / Shading / Drought"
             className={inputCls} list="perlakuan-suggestions" />
           <datalist id="perlakuan-suggestions">
-            {["Normal","Naungan","Kekeringan","Genangan"].map(p => <option key={p} value={p} />)}
+            {["Normal","Shading","Drought","Flooding","Salt Stress"].map(p => <option key={p} value={p} />)}
           </datalist>
         </div>
       </div>
