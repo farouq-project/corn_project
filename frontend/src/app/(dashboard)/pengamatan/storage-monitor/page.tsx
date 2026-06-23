@@ -238,7 +238,7 @@ export default function StorageMonitorPage() {
                       >
                         <option value="">-- Pilih Genotipe --</option>
                         {genotypes.map(g => (
-                          <option key={g.id} value={g.genotype_name}>{g.genotype_code} — {g.genotype_name}</option>
+                          <option key={g.id} value={g.genotype_name}>{g.genotype_name}</option>
                         ))}
                       </select>
                       {genoRows.length > 1 && (

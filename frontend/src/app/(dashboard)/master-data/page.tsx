@@ -42,7 +42,8 @@ const genotypeSchema = z.object({
 const trialSchema = z.object({
   trial_code: z.string().min(1),
   trial_name: z.string().min(1),
-  environment_id: z.coerce.number().optional().nullable(),
+  // empty string from <select> must become null, not NaN
+  environment_id: z.preprocess(v => (v === "" || v == null) ? null : Number(v), z.number().positive().nullable().optional()),
   planting_date: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
