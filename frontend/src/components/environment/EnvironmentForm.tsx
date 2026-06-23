@@ -13,7 +13,6 @@ const schema = z.object({
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
   season_name: z.string().optional(), // free-text season, no FK
-  perlakuan: z.string().optional(),
   elevation_m: z.coerce.number().int().optional().nullable(),
   avg_temperature_c: z.coerce.number().optional().nullable(),
   total_rainfall_mm: z.coerce.number().optional().nullable(),
@@ -225,20 +224,10 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
       </div>
 
       {/* Musim — manual text, optional */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Musim <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
-          <input {...register("season_name")} placeholder="contoh: Musim Hujan 2026"
-            className={inputCls} />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Environment <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
-          <input {...register("perlakuan")} placeholder="Normal / Shading / Drought"
-            className={inputCls} list="perlakuan-suggestions" />
-          <datalist id="perlakuan-suggestions">
-            {["Normal","Shading","Drought","Flooding","Salt Stress"].map(p => <option key={p} value={p} />)}
-          </datalist>
-        </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Musim <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+        <input {...register("season_name")} placeholder="contoh: Musim Hujan 2026"
+          className={inputCls} />
       </div>
 
       {/* Auto-detected fields */}

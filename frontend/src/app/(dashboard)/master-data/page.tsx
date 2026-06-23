@@ -574,7 +574,6 @@ export default function MasterDataPage() {
                     latitude: editingEnv.latitude,
                     longitude: editingEnv.longitude,
                     season_name: (editingEnv as Environment & {season_name?:string}).season_name ?? "",
-                    perlakuan: (editingEnv as Environment & {perlakuan?:string}).perlakuan ?? "",
                     elevation_m: editingEnv.elevation_m,
                     avg_temperature_c: editingEnv.avg_temperature_c,
                     total_rainfall_mm: editingEnv.total_rainfall_mm,
