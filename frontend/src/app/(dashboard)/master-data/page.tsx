@@ -42,8 +42,8 @@ const genotypeSchema = z.object({
 const trialSchema = z.object({
   trial_code: z.string().min(1),
   trial_name: z.string().min(1),
-  season_id: z.preprocess(Number, z.number()).optional(),
-  location_id: z.preprocess(Number, z.number()).optional(),
+  environment_id: z.coerce.number().optional().nullable(),
+  planting_date: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
   status: z.enum(["planned", "active", "harvested", "completed", "cancelled"]).default("planned"),
@@ -227,6 +227,7 @@ export default function MasterDataPage() {
     { header: "Nama", accessorKey: "genotype_name" },
     { header: "Kategori", accessorKey: "category", cell: ({getValue}) => <span className="text-xs capitalize">{(getValue() as string).replace("_"," ")}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
+    { header: "Aksi", id: "gAct", cell: ({row}) => <button onClick={() => { if(confirm(`Hapus genotipe "${row.original.genotype_code}"?`)) api.delete(`/v1/genotypes/${row.original.id}`).then(() => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe dihapus"); }).catch(e => toast.error(getApiErrorMessage(e))); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button> },
   ];
 
   const tCols: ColumnDef<Trial, unknown>[] = [
@@ -234,7 +235,12 @@ export default function MasterDataPage() {
     { header: "Nama Research Plan", accessorKey: "trial_name" },
     { header: "Desain", accessorKey: "layout_design", cell: ({getValue}) => <span className="text-xs">{getValue() as string}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
-    { header: "Aksi", id: "tActions", cell: ({row}) => <button onClick={() => openEditTrial(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
+    { header: "Aksi", id: "tActions", cell: ({row}) => (
+      <div className="flex gap-1">
+        <button onClick={() => openEditTrial(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
+        <button onClick={() => { if(confirm(`Hapus Research Plan "${row.original.trial_code}"?`)) tBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+      </div>
+    )},
   ];
 
   const cCols: ColumnDef<Characteristic, unknown>[] = [
@@ -243,7 +249,12 @@ export default function MasterDataPage() {
     { header: "Kelompok", accessorKey: "group", cell: ({getValue}) => getValue() ? <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs">{getValue() as string}</span> : <span className="text-gray-300">—</span> },
     { header: "Satuan", accessorKey: "unit", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
     { header: "Status", accessorKey: "is_active", cell: ({getValue}) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
-    { header: "Aksi", id: "cActions", cell: ({row}) => <button onClick={() => openCharEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
+    { header: "Aksi", id: "cActions", cell: ({row}) => (
+      <div className="flex gap-1">
+        <button onClick={() => openCharEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
+        <button onClick={() => { if(confirm(`Hapus karakter "${row.original.code}"?`)) cBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+      </div>
+    )},
   ];
 
   const envCols: ColumnDef<Environment, unknown>[] = [
@@ -258,10 +269,15 @@ export default function MasterDataPage() {
         return <span className="text-xs">{val ?? "—"}</span>;
       },
     },
-    { header: "Perlakuan", id: "perlakuan", cell: ({row}) => <span className="text-xs text-gray-500">{(row.original as Environment & {perlakuan?:string}).perlakuan ?? "—"}</span> },
+    { header: "Environment", id: "perlakuan", cell: ({row}) => <span className="text-xs text-gray-500">{(row.original as Environment & {perlakuan?:string}).perlakuan ?? "—"}</span> },
     { header: "Elevasi", accessorKey: "elevation_m", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()} m` : "—"}</span> },
     { header: "Suhu", accessorKey: "avg_temperature_c", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()}°C` : "—"}</span> },
-    { header: "Aksi", id: "eActions", cell: ({row}) => <button onClick={() => openEnvEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
+    { header: "Aksi", id: "eActions", cell: ({row}) => (
+      <div className="flex gap-1">
+        <button onClick={() => openEnvEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
+        <button onClick={() => { if(confirm(`Hapus lingkungan "${row.original.environment_code}"?`)) envBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+      </div>
+    )},
   ];
 
   const sCols: ColumnDef<Season, unknown>[] = [
@@ -279,6 +295,7 @@ export default function MasterDataPage() {
     { header: "Tipe", accessorKey: "unit_type" },
     { header: "Suhu (°C)", id: "temp", cell: ({row}) => <span className="text-xs">{row.original.temperature_min} – {row.original.temperature_max}</span> },
     { header: "Status", accessorKey: "is_active", cell: ({getValue}) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
+    { header: "Aksi", id: "suAct", cell: ({row}) => <button onClick={() => { if(confirm(`Hapus unit "${row.original.unit_name}"?`)) suBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button> },
   ];
 
   const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","storage_units"];
@@ -405,7 +422,7 @@ export default function MasterDataPage() {
                   <option value="200">200</option>
                 </select>
               </div>
-              <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} />
+              <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} pageSize={genoPageSize === "all" ? 9999 : genoPageSize} />
             </div>
           )}
 
@@ -505,12 +522,19 @@ export default function MasterDataPage() {
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select {...tForm.register("status")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["planned","Direncanakan"],["active","Aktif"],["harvested","Dipanen"],["completed","Selesai"],["cancelled","Dibatalkan"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  {!editingTrial && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div><label className="block text-sm font-medium text-gray-700 mb-1">Musim *</label><select {...tForm.register("season_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{seasonsList?.map(s => <option key={s.id} value={s.id}>{s.season_name}</option>)}</select></div>
-                      <div><label className="block text-sm font-medium text-gray-700 mb-1">Lokasi *</label><select {...tForm.register("location_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{locationsList?.map(l => <option key={l.id} value={l.id}>{l.field_name}</option>)}</select></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                      <select {...tForm.register("environment_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="">-- Pilih Lingkungan --</option>
+                        {envs.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
+                      </select>
                     </div>
-                  )}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Target Penanaman</label>
+                      <input type="date" {...tForm.register("planting_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Ulangan</label><input type="number" min="1" max="20" {...tForm.register("replications")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>

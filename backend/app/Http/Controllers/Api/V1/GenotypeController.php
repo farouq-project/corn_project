@@ -86,7 +86,7 @@ class GenotypeController extends Controller
     public function destroy(Genotype $genotype): JsonResponse
     {
         AuditService::logDeleted($genotype);
-        $genotype->delete();
+        $genotype->forceDelete(); // hard delete so duplicate imports don't fail
         return response()->json(null, 204);
     }
 

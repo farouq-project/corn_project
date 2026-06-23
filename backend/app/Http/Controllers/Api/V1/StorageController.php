@@ -97,7 +97,7 @@ class StorageController extends Controller
         }
 
         AuditService::logDeleted($unit);
-        $unit->delete();
+        $unit->forceDelete();
 
         return response()->json(['message' => 'Unit penyimpanan berhasil dihapus.']);
     }

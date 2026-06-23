@@ -111,7 +111,7 @@ class EnvironmentController extends Controller
         }
 
         AuditService::logDeleted($environment);
-        $environment->delete();
+        $environment->forceDelete();
 
         return response()->json(['message' => 'Environment berhasil dihapus.']);
     }

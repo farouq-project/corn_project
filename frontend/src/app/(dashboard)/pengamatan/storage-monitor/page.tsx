@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Download, Upload, Trash2, Package, Camera } from "lucide-react";
+import { Plus, X, Download, Upload, Trash2, Package } from "lucide-react";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { DataTable } from "@/components/shared/DataTable";
 import { formatDate } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
+import type { Genotype } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -27,10 +28,7 @@ interface MonitorEntry {
   moisture_content?: number;
   notes?: string;
   recorder?: { name: string };
-  created_at: string;
 }
-
-const GENOTIPE_EXAMPLES = ["SR4", "SR7", "Jambore", "Bisma", "Arjuna", "Sukmaraga"];
 
 export default function StorageMonitorPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,14 +37,24 @@ export default function StorageMonitorPage() {
   const importRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
-  // Form state
-  const [form, setForm] = useState({
-    prev_code: "", new_code: "", prev_box: "", new_box: "",
-    genotype_name: "", prev_packaging: "", new_packaging: "",
-    harvest_date: "", seed_weight: "", moisture_content: "", notes: "",
-  });
+  // Multi-row genotipe cross breed state: each element is one genotype name
+  const [genoRows, setGenoRows] = useState<string[]>([""]);
 
+  // Simple form state for other fields
+  const [form, setForm] = useState({
+    prev_code:"", new_code:"", prev_box:"", new_box:"",
+    prev_packaging:"", new_packaging:"",
+    harvest_date:"", seed_weight:"", moisture_content:"", notes:"",
+  });
   const set = (k: keyof typeof form, v: string) => setForm(p => ({...p, [k]: v}));
+
+  // Fetch genotypes from master data for cross breed selector
+  const { data: genotypesData } = useQuery({
+    queryKey: ["genotypes", "storage-monitor"],
+    queryFn: () => api.get<{data:Genotype[]}>("/v1/genotypes?per_page=2000").then(r => r.data),
+    staleTime: 60000,
+  });
+  const genotypes: Genotype[] = genotypesData?.data ?? [];
 
   const { data, isLoading } = useQuery({
     queryKey: ["storage-monitor"],
@@ -61,7 +69,8 @@ export default function StorageMonitorPage() {
       qc.invalidateQueries({ queryKey: ["storage-monitor"] });
       toast.success("Entri berhasil ditambahkan");
       setIsModalOpen(false);
-      setForm({ prev_code:"",new_code:"",prev_box:"",new_box:"",genotype_name:"",prev_packaging:"",new_packaging:"",harvest_date:"",seed_weight:"",moisture_content:"",notes:"" });
+      setGenoRows([""]);
+      setForm({ prev_code:"",new_code:"",prev_box:"",new_box:"",prev_packaging:"",new_packaging:"",harvest_date:"",seed_weight:"",moisture_content:"",notes:"" });
     },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
@@ -79,14 +88,21 @@ export default function StorageMonitorPage() {
   });
 
   const submit = () => {
-    if (!form.genotype_name.trim()) { toast.error("Nama Genotipe wajib diisi"); return; }
+    const filled = genoRows.filter(r => r.trim());
+    if (filled.length === 0) { toast.error("Nama Genotipe wajib diisi minimal satu"); return; }
+    const genotype_name = filled.join(" x ");
     createMutation.mutate({
       ...form,
+      genotype_name,
       seed_weight: form.seed_weight ? Number(form.seed_weight) : null,
       moisture_content: form.moisture_content ? Number(form.moisture_content) : null,
       harvest_date: form.harvest_date || null,
     });
   };
+
+  const addGenoRow = () => setGenoRows(r => [...r, ""]);
+  const removeGenoRow = (i: number) => setGenoRows(r => r.filter((_, idx) => idx !== i));
+  const setGenoRow = (i: number, v: string) => setGenoRows(r => r.map((x, idx) => idx === i ? v : x));
 
   const inp = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
 
@@ -99,13 +115,12 @@ export default function StorageMonitorPage() {
     { header: "Nama Genotipe", accessorKey: "genotype_name", cell: ({getValue}) => <span className="text-sm font-medium">{(getValue() as string) || "—"}</span> },
     { header: "Kemasan Lama", accessorKey: "prev_packaging", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
     { header: "Kemasan Baru", accessorKey: "new_packaging", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
-    { header: "Tgl Panen", accessorKey: "harvest_date", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? formatDate(getValue() as string) : "—"}</span> },
+    { header: "Tgl Panen", accessorKey: "harvest_date", cell: ({getValue}) => <span className="text-xs">{getValue() ? formatDate(getValue() as string) : "—"}</span> },
     { header: "Berat (g)", accessorKey: "seed_weight", cell: ({getValue}) => <span className="text-xs">{getValue() ? `${getValue()} g` : "—"}</span> },
     { header: "KA (%)", accessorKey: "moisture_content", cell: ({getValue}) => <span className="text-xs">{getValue() ? `${getValue()}%` : "—"}</span> },
     { header: "Keterangan", accessorKey: "notes", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
     {
-      header: "Aksi",
-      id: "act",
+      header: "Aksi", id: "act",
       cell: ({row}) => (
         <button onClick={() => { if(confirm(`Hapus entri #${row.original.entry_number}?`)) deleteMutation.mutate(row.original.id); }}
           className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
@@ -152,36 +167,33 @@ export default function StorageMonitorPage() {
               onChange={e => { const f=e.target.files?.[0]; if(f) importMutation.mutate(f); e.target.value=""; }} />
           </div>
           {importResult && (
-            <div className="space-y-2">
+            <div className="space-y-1">
               <p className="text-sm text-green-700 font-medium">{importResult.created} entri berhasil diimpor</p>
-              {importResult.errors.length > 0 && (
-                <div className="text-xs text-red-600 space-y-0.5">{importResult.errors.map((e,i) => <p key={i}>{e}</p>)}</div>
-              )}
+              {importResult.errors.map((e,i) => <p key={i} className="text-xs text-red-600">{e}</p>)}
             </div>
           )}
           <p className="text-xs text-gray-400">Kolom: Nomor · Kode Sebelumnya · Kode Baru · Box Sebelumnya · Box Baru · Nama Genotipe · Kemasan Sebelumnya · Kemasan Baru · Tanggal Panen · Berat Benih (g) · Kadar Air (%) · Keterangan</p>
         </div>
       )}
 
-      {/* Summary */}
-      <div className="flex items-center gap-3 text-sm text-gray-500">
+      <div className="flex items-center gap-2 text-sm text-gray-500">
         <Package className="w-4 h-4" />
         <span>{entries.length} entri tercatat</span>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
         <DataTable
           data={entries}
           columns={columns}
           isLoading={isLoading}
           searchPlaceholder="Cari kode atau nama genotipe..."
-          emptyMessage="Belum ada entri. Klik 'Tambah Entri' untuk memulai."
+          emptyMessage="Belum ada entri."
           getRowId={r => String(r.id)}
+          pageSize={9999}
         />
       </div>
 
-      {/* Add modal */}
+      {/* Add entry modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -190,43 +202,74 @@ export default function StorageMonitorPage() {
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
             </div>
             <div className="p-6 space-y-4">
+
               {/* Kode */}
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode Sebelumnya</label><input value={form.prev_code} onChange={e=>set("prev_code",e.target.value)} className={inp} placeholder="K-001" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode Baru</label><input value={form.new_code} onChange={e=>set("new_code",e.target.value)} className={inp} placeholder="K-001-R" /></div>
               </div>
+
               {/* Box */}
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Box Sebelumnya</label><input value={form.prev_box} onChange={e=>set("prev_box",e.target.value)} className={inp} placeholder="Box A1" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Box Baru</label><input value={form.new_box} onChange={e=>set("new_box",e.target.value)} className={inp} placeholder="Box B2" /></div>
               </div>
-              {/* Genotipe */}
+
+              {/* Genotipe — multi-row cross breed */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Genotipe * <span className="text-xs text-gray-400">(bisa kombinasi: SR4 x SR7 x Jambore)</span></label>
-                <input value={form.genotype_name} onChange={e=>set("genotype_name",e.target.value)}
-                  list="geno-list" className={inp} placeholder="SR4 x SR7 x Jambore" />
-                <datalist id="geno-list">{GENOTIPE_EXAMPLES.map(g=><option key={g} value={g}/>)}</datalist>
-                {/* Quick add chips */}
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {GENOTIPE_EXAMPLES.map(g=>(
-                    <button key={g} type="button" onClick={()=>set("genotype_name", form.genotype_name ? form.genotype_name + " x " + g : g)}
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-700">
-                      + {g}
-                    </button>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Nama Genotipe * <span className="text-xs text-gray-400 font-normal">({genoRows.filter(r=>r).join(" x ")||"—"})</span>
+                  </label>
+                  <button type="button" onClick={addGenoRow}
+                    className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 px-2 py-1 rounded hover:bg-green-50">
+                    <Plus className="w-3.5 h-3.5" /> Tambah Silang
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {genoRows.map((val, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      {i > 0 && <span className="text-gray-400 text-sm font-bold flex-shrink-0">×</span>}
+                      {i === 0 && <span className="text-gray-400 text-sm w-4 flex-shrink-0" />}
+                      <select
+                        value={val}
+                        onChange={e => setGenoRow(i, e.target.value)}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="">-- Pilih Genotipe --</option>
+                        {genotypes.map(g => (
+                          <option key={g.id} value={g.genotype_name}>{g.genotype_code} — {g.genotype_name}</option>
+                        ))}
+                      </select>
+                      {genoRows.length > 1 && (
+                        <button type="button" onClick={() => removeGenoRow(i)}
+                          className="p-1.5 text-gray-300 hover:text-red-400 flex-shrink-0">
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
+                {genoRows.filter(r=>r).length > 1 && (
+                  <p className="text-xs text-green-600 mt-1.5 font-medium">
+                    Hasil: {genoRows.filter(r=>r).join(" x ")}
+                  </p>
+                )}
               </div>
+
               {/* Kemasan */}
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Kemasan Sebelumnya</label><input value={form.prev_packaging} onChange={e=>set("prev_packaging",e.target.value)} className={inp} placeholder="Kantong" /></div>
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Kemasan Baru</label><input value={form.new_packaging} onChange={e=>set("new_packaging",e.target.value)} className={inp} placeholder="Kaleng" /></div>
               </div>
+
               {/* Berat + KA + Panen */}
               <div className="grid grid-cols-3 gap-4">
                 <div><label className="block text-sm font-medium text-gray-700 mb-1">Berat Benih (g)</label><input type="number" step="0.01" value={form.seed_weight} onChange={e=>set("seed_weight",e.target.value)} className={inp} placeholder="150.5" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Kadar Air (%) <span className="text-gray-400 text-xs">opsional</span></label><input type="number" step="0.01" min="0" max="100" value={form.moisture_content} onChange={e=>set("moisture_content",e.target.value)} className={inp} /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">Tgl Panen <span className="text-gray-400 text-xs">opsional</span></label><input type="date" value={form.harvest_date} onChange={e=>set("harvest_date",e.target.value)} className={inp} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Kadar Air (%) <span className="text-gray-400 text-xs">opt</span></label><input type="number" step="0.01" min="0" max="100" value={form.moisture_content} onChange={e=>set("moisture_content",e.target.value)} className={inp} /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">Tgl Panen <span className="text-gray-400 text-xs">opt</span></label><input type="date" value={form.harvest_date} onChange={e=>set("harvest_date",e.target.value)} className={inp} /></div>
               </div>
+
               {/* Notes */}
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Keterangan</label><textarea value={form.notes} onChange={e=>set("notes",e.target.value)} rows={2} className={`${inp} resize-none`} /></div>
 

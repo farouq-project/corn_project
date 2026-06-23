@@ -19,6 +19,8 @@ interface DataTableProps<TData> {
   searchPlaceholder?: string;
   isLoading?: boolean;
   emptyMessage?: string;
+  /** Controls how many rows are shown per page (default 10). Pass a large number like 9999 to show all. */
+  pageSize?: number;
   /** When provided, enables checkboxes and shows a bulk-delete toolbar */
   onBulkDelete?: (selectedRows: TData[]) => void | Promise<void>;
   isBulkDeleting?: boolean;
@@ -32,6 +34,7 @@ export function DataTable<TData>({
   searchPlaceholder = "Cari...",
   isLoading,
   emptyMessage = "Tidak ada data",
+  pageSize: defaultPageSize,
   onBulkDelete,
   isBulkDeleting,
   getRowId,
@@ -79,7 +82,7 @@ export function DataTable<TData>({
     getPaginationRowModel: getPaginationRowModel(),
     enableRowSelection: selectable,
     getRowId: getRowId ?? ((row, idx) => String((row as { id?: unknown }).id ?? idx)),
-    initialState: { pagination: { pageSize: 10 } },
+    initialState: { pagination: { pageSize: defaultPageSize ?? 10 } },
   });
 
   const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original);

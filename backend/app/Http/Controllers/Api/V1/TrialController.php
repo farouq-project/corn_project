@@ -107,7 +107,7 @@ class TrialController extends Controller
     public function destroy(Trial $trial): JsonResponse
     {
         AuditService::logDeleted($trial);
-        $trial->delete();
+        $trial->forceDelete();
         return response()->json(null, 204);
     }
 
