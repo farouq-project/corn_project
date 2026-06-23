@@ -60,6 +60,12 @@ export default function FinancePage() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [isExpenseEditOpen, setIsExpenseEditOpen] = useState(false);
+  const [editExpenseTitle, setEditExpenseTitle] = useState("");
+  const [editExpenseVendor, setEditExpenseVendor] = useState("");
+  const [editExpenseAmount, setEditExpenseAmount] = useState("");
+  const [editExpenseDate, setEditExpenseDate] = useState("");
   const queryClient = useQueryClient();
   const { suggestions: categorySuggestions, remember: rememberCategory } = useCategoryMemory();
 
@@ -122,6 +128,27 @@ export default function FinancePage() {
     },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
+
+  const deleteExpenseMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/finance/expenses/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["expenses"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] }); toast.success("Pengeluaran dihapus"); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const updateExpenseMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: object }) => api.put(`/v1/finance/expenses/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["expenses"] }); toast.success("Pengeluaran diperbarui"); setIsExpenseEditOpen(false); setEditingExpense(null); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const openEditExpense = (exp: Expense) => {
+    setEditingExpense(exp);
+    setEditExpenseTitle(exp.title);
+    setEditExpenseVendor((exp as Expense & { vendor?: string }).vendor ?? "");
+    setEditExpenseAmount(String(exp.amount));
+    setEditExpenseDate((exp as Expense & { payment_date?: string }).payment_date ?? "");
+    setIsExpenseEditOpen(true);
+  };
 
   const deleteBudgetMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/v1/finance/budgets/${id}`),
@@ -253,14 +280,17 @@ export default function FinancePage() {
       },
     },
     {
-      header: "Status",
-      accessorKey: "approval_status",
-      cell: ({ getValue }) => <StatusBadge status={getValue() as string} />,
+      header: "Aksi",
+      id: "expAct",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          <button onClick={() => openEditExpense(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition" title="Edit"><Edit2 className="w-3.5 h-3.5" /></button>
+          <button onClick={() => { if (confirm(`Hapus pengeluaran "${row.original.title}"?`)) deleteExpenseMutation.mutate(row.original.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus"><Trash2 className="w-3.5 h-3.5" /></button>
+        </div>
+      ),
     },
   ];
 
-  const totalApproved = expenses.filter(e => e.approval_status === "approved").reduce((s, e) => s + e.amount, 0);
-  const totalPending = expenses.filter(e => e.approval_status === "pending").length;
   const totalAmount = expenses.reduce((s, e) => s + e.amount, 0);
 
   const openEditBudget = (b: Budget) => {
@@ -328,25 +358,11 @@ export default function FinancePage() {
         ) : null;
       })()}
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div><p className="text-xs text-gray-500">Total Pengeluaran</p><p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</p></div>
-            <div className="p-2.5 rounded-lg bg-blue-50"><Wallet className="w-5 h-5 text-blue-600" /></div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div><p className="text-xs text-gray-500">Disetujui</p><p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(totalApproved)}</p></div>
-            <div className="p-2.5 rounded-lg bg-green-50"><CheckCircle2 className="w-5 h-5 text-green-600" /></div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div><p className="text-xs text-gray-500">Menunggu Persetujuan</p><p className="text-2xl font-bold text-orange-600 mt-1">{totalPending} transaksi</p></div>
-            <div className="p-2.5 rounded-lg bg-orange-50"><Clock className="w-5 h-5 text-orange-600" /></div>
-          </div>
+      {/* Summary Card — single total only */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div><p className="text-xs text-gray-500">Total Pengeluaran</p><p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</p></div>
+          <div className="p-2.5 rounded-lg bg-blue-50"><Wallet className="w-5 h-5 text-blue-600" /></div>
         </div>
       </div>
 
@@ -585,6 +601,49 @@ export default function FinancePage() {
                 <button type="button" onClick={submitExpenses} disabled={batchMutation.isPending}
                   className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
                   {batchMutation.isPending ? "Menyimpan..." : "Catat Pengeluaran"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Expense Edit Modal */}
+      {isExpenseEditOpen && editingExpense && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Edit Pengeluaran</h3>
+              <button onClick={() => { setIsExpenseEditOpen(false); setEditingExpense(null); }} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Detail Pengeluaran *</label>
+                <input value={editExpenseTitle} onChange={e => setEditExpenseTitle(e.target.value)} className={inputCls} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendor/Penyedia</label>
+                  <input value={editExpenseVendor} onChange={e => setEditExpenseVendor(e.target.value)} className={inputCls} placeholder="Opsional" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah (Rp) *</label>
+                  <input type="number" min="0" value={editExpenseAmount} onChange={e => setEditExpenseAmount(e.target.value)} className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Pembayaran *</label>
+                <input type="date" value={editExpenseDate} onChange={e => setEditExpenseDate(e.target.value)} className={inputCls} />
+              </div>
+              <div className="flex gap-3 pt-2 border-t">
+                <button type="button" onClick={() => { setIsExpenseEditOpen(false); setEditingExpense(null); }} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button>
+                <button type="button" disabled={updateExpenseMutation.isPending}
+                  onClick={() => {
+                    if (!editExpenseTitle.trim() || !editExpenseAmount) { toast.error("Judul dan jumlah wajib diisi"); return; }
+                    updateExpenseMutation.mutate({ id: editingExpense.id, data: { title: editExpenseTitle.trim(), vendor: editExpenseVendor.trim() || null, amount: Number(editExpenseAmount), payment_date: editExpenseDate } });
+                  }}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">
+                  {updateExpenseMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
                 </button>
               </div>
             </div>

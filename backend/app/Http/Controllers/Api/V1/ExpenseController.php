@@ -222,6 +222,14 @@ class ExpenseController extends Controller
         return response()->json($expense);
     }
 
+    public function expenseDestroy(Expense $expense): JsonResponse
+    {
+        AuditService::logDeleted($expense);
+        $expense->delete();
+
+        return response()->json(['message' => 'Pengeluaran berhasil dihapus.']);
+    }
+
     public function approveExpense(Request $request, Expense $expense): JsonResponse
     {
         $data = $request->validate([

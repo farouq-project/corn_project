@@ -48,14 +48,17 @@ const STATIC_COLUMN_LABELS: Record<string, string> = {
   replication: "R",
 };
 
-function getPinningStyles<T>(column: Column<RowData, T>): CSSProperties {
+function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
   const isPinned = column.getIsPinned();
 
   return {
     position: isPinned ? "sticky" : undefined,
     left: isPinned === "left" ? `${column.getStart("left")}px` : undefined,
-    zIndex: isPinned ? 2 : 0,
-    boxShadow: isPinned === "left" ? "2px 0 4px -2px rgba(0,0,0,0.08)" : undefined,
+    // Headers need z-index 3 (above both pinned body cells at 2 and scrollable content at 0)
+    zIndex: isPinned ? (isHeader ? 3 : 2) : isHeader ? 1 : 0,
+    // Solid background stops scrolled content showing through pinned columns
+    backgroundColor: isPinned ? (isHeader ? "rgb(249,250,251)" : "white") : undefined,
+    boxShadow: isPinned === "left" ? "2px 0 5px -1px rgba(0,0,0,0.12)" : undefined,
   };
 }
 
@@ -219,7 +222,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    style={{ ...getPinningStyles(header.column), width: header.column.getSize() || undefined, maxWidth: header.column.getSize() || undefined }}
+                    style={{ ...getPinningStyles(header.column, true), width: header.column.getSize() || undefined, maxWidth: header.column.getSize() || undefined }}
                     className={cn(
                       "px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 sticky top-0 bg-gray-50",
                       header.column.getIsPinned() && "bg-gray-50"
@@ -277,10 +280,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
                     <td
                       key={cell.id}
                       style={getPinningStyles(cell.column)}
-                      className={cn(
-                        "px-2 py-1 whitespace-nowrap bg-white",
-                        cell.column.getIsPinned() && "group-hover:bg-gray-50"
-                      )}
+                      className="px-2 py-1 whitespace-nowrap"
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>

@@ -273,6 +273,7 @@ Route::prefix('v1')->group(function () {
             Route::post('expenses/batch', [ExpenseController::class, 'batchStore']);
             Route::get('expenses/{expense}', [ExpenseController::class, 'expenseShow']);
             Route::put('expenses/{expense}', [ExpenseController::class, 'expenseUpdate']);
+            Route::delete('expenses/{expense}', [ExpenseController::class, 'expenseDestroy']);
             Route::post('expenses/{expense}/approve', [ExpenseController::class, 'approveExpense']);
         });
 
