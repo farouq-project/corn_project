@@ -102,52 +102,84 @@ class StorageMonitorController extends Controller
     public function import(Request $request): JsonResponse
     {
         $request->validate([
-            'file' => ['required', 'file', 'mimes:xlsx,xls', 'max:10240'],
+            'file' => ['required', 'file', 'mimes:xlsx,xls,csv', 'max:20480'],
         ]);
 
-        $spreadsheet = IOFactory::load($request->file('file')->getPathname());
-        $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
-
-        if (empty($rows)) {
-            return response()->json(['message' => 'File kosong.'], 422);
+        try {
+            $spreadsheet = IOFactory::load($request->file('file')->getPathname());
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'File tidak dapat dibaca: ' . $e->getMessage()], 422);
         }
 
-        $headers = array_map(fn($h) => strtolower(trim((string) $h)), $rows[0]);
-        $colMap = array_flip($headers);
+        $rows = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
 
-        $col = fn(string $key, array $row) => trim((string) ($row[$colMap[$key] ?? -1] ?? ''));
+        if (empty($rows) || count($rows) < 2) {
+            return response()->json(['message' => 'File kosong atau hanya berisi header.'], 422);
+        }
+
+        // Normalize headers: lowercase, trim, strip parenthetical units for flexible matching
+        $rawHeaders = array_map(fn($h) => strtolower(trim((string) $h)), $rows[0]);
+        $colMap = array_flip($rawHeaders);
+
+        // Helper: look up a column value by header keyword (partial match fallback)
+        $col = function(string $key, array $row) use ($colMap, $rawHeaders): string {
+            // Exact match first
+            if (isset($colMap[$key])) {
+                return trim((string) ($row[$colMap[$key]] ?? ''));
+            }
+            // Partial match: find header that starts with or contains the key
+            foreach ($rawHeaders as $idx => $header) {
+                if (str_starts_with($header, $key) || str_contains($header, $key)) {
+                    return trim((string) ($row[$idx] ?? ''));
+                }
+            }
+            return '';
+        };
 
         $created = 0;
         $errors = [];
         $maxEntry = StorageMonitorEntry::max('entry_number') ?? 0;
 
-        DB::transaction(function () use ($rows, $col, $request, &$created, &$errors, &$maxEntry) {
-            foreach (array_slice($rows, 1) as $i => $row) {
-                $values = array_map(fn($v) => $v === null ? '' : trim((string) $v), $row);
-                if (implode('', $values) === '') continue;
+        try {
+            DB::transaction(function () use ($rows, $col, $request, &$created, &$errors, &$maxEntry) {
+                foreach (array_slice($rows, 1) as $i => $row) {
+                    $values = array_map(fn($v) => $v === null ? '' : trim((string) $v), $row);
+                    if (implode('', $values) === '') continue;
 
-                $genotypeCol = $col('nama genotipe', $row);
-                if (!$genotypeCol) { $errors[] = "Baris " . ($i + 2) . ": Nama Genotipe kosong, dilewati."; continue; }
+                    $genotypeCol = $col('nama genotipe', $row);
+                    if (!$genotypeCol) { $errors[] = "Baris " . ($i + 2) . ": Nama Genotipe kosong, dilewati."; continue; }
 
-                $maxEntry++;
-                StorageMonitorEntry::create([
-                    'entry_number' => $maxEntry,
-                    'prev_code' => $col('kode sebelumnya', $row) ?: null,
-                    'new_code' => $col('kode baru', $row) ?: null,
-                    'prev_box' => $col('box sebelumnya', $row) ?: null,
-                    'new_box' => $col('box baru', $row) ?: null,
-                    'genotype_name' => $genotypeCol,
-                    'prev_packaging' => $col('kemasan sebelumnya', $row) ?: null,
-                    'new_packaging' => $col('kemasan baru', $row) ?: null,
-                    'harvest_date' => $col('tanggal panen (yyyy-mm-dd)', $row) ?: null,
-                    'seed_weight' => $col('berat benih (g)', $row) ? (float) $col('berat benih (g)', $row) : null,
-                    'moisture_content' => $col('kadar air (%)', $row) ? (float) $col('kadar air (%)', $row) : null,
-                    'notes' => $col('keterangan', $row) ?: null,
-                    'recorded_by' => $request->user()->id,
-                ]);
-                $created++;
-            }
-        });
+                    $harvestRaw = $col('tanggal panen', $row);
+                    $harvestDate = null;
+                    if ($harvestRaw) {
+                        try { $harvestDate = \Carbon\Carbon::parse($harvestRaw)->format('Y-m-d'); } catch (\Throwable) {}
+                    }
+
+                    $seedWeightRaw = $col('berat benih', $row);
+                    $moistureRaw = $col('kadar air', $row);
+
+                    $maxEntry++;
+                    StorageMonitorEntry::create([
+                        'entry_number' => $maxEntry,
+                        'prev_code' => $col('kode sebelumnya', $row) ?: null,
+                        'new_code' => $col('kode baru', $row) ?: null,
+                        'prev_box' => $col('box sebelumnya', $row) ?: null,
+                        'new_box' => $col('box baru', $row) ?: null,
+                        'genotype_name' => $genotypeCol,
+                        'prev_packaging' => $col('kemasan sebelumnya', $row) ?: null,
+                        'new_packaging' => $col('kemasan baru', $row) ?: null,
+                        'harvest_date' => $harvestDate,
+                        'seed_weight' => $seedWeightRaw !== '' ? (float) $seedWeightRaw : null,
+                        'moisture_content' => $moistureRaw !== '' ? (float) $moistureRaw : null,
+                        'notes' => $col('keterangan', $row) ?: null,
+                        'recorded_by' => $request->user()->id,
+                    ]);
+                    $created++;
+                }
+            });
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Gagal menyimpan data: ' . $e->getMessage()], 500);
+        }
 
         return response()->json([
             'message' => "Import selesai: {$created} entri dibuat.",

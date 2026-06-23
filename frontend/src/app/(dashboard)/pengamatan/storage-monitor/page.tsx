@@ -81,6 +81,12 @@ export default function StorageMonitorPage() {
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/storage-monitor/${id}`))),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["storage-monitor"] }); toast.success("Entri terpilih dihapus"); },
+    onError: () => toast.error("Sebagian entri gagal dihapus"),
+  });
+
   const importMutation = useMutation({
     mutationFn: (file: File) => { const fd=new FormData(); fd.append("file",file); return api.post("/v1/storage-monitor/import",fd,{headers:{"Content-Type":"multipart/form-data"}}); },
     onSuccess: res => { qc.invalidateQueries({queryKey:["storage-monitor"]}); const d=res.data as {created?:number;errors?:string[]}; setImportResult({created:d.created??0,errors:d.errors??[]}); toast.success(`Import selesai: ${d.created} entri dibuat`); },
@@ -190,6 +196,8 @@ export default function StorageMonitorPage() {
           emptyMessage="Belum ada entri."
           getRowId={r => String(r.id)}
           pageSize={9999}
+          onBulkDelete={rows => bulkDeleteMutation.mutate(rows.map(r => r.id))}
+          isBulkDeleting={bulkDeleteMutation.isPending}
         />
       </div>
 

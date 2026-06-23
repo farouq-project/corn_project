@@ -51,11 +51,8 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
-        // Extract environment_id before create (column doesn't exist on trials table)
-        $environmentId = $data['environment_id'] ?? null;
-        unset($data['environment_id']);
-
         // Derive location_id and season_id from environment if provided
+        $environmentId = $data['environment_id'] ?? null;
         if ($environmentId) {
             $env = \App\Models\Environment::find($environmentId);
             if ($env) {
@@ -69,15 +66,15 @@ class TrialController extends Controller
             $data['principal_researcher_id'] = $request->user()->id;
         }
 
+        // environment_id column exists on trials table — stored directly
         $trial = Trial::create($data);
 
-        // Link the selected Lingkungan (environment) to the trial via junction table
-        if ($environmentId && !\App\Models\TrialEnvironment::where('trial_id', $trial->id)->where('environment_id', $environmentId)->exists()) {
-            TrialEnvironment::create([
-                'trial_id' => $trial->id,
-                'environment_id' => $environmentId,
-                'status' => 'active',
-            ]);
+        // Also link via trial_environments junction so environment filter works
+        if ($environmentId) {
+            TrialEnvironment::firstOrCreate(
+                ['trial_id' => $trial->id, 'environment_id' => $environmentId],
+                ['status' => 'active']
+            );
         }
 
         AuditService::logCreated($trial);
@@ -112,14 +109,13 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
-        // Extract environment_id before update (not a column on trials table)
         $environmentId = $data['environment_id'] ?? null;
-        unset($data['environment_id']);
 
         $original = $trial->getAttributes();
+        // environment_id is stored directly on trials table
         $trial->update($data);
 
-        // Sync the Lingkungan link via trial_environments junction table
+        // Also sync via trial_environments junction so environment filter works
         if ($environmentId) {
             TrialEnvironment::firstOrCreate(
                 ['trial_id' => $trial->id, 'environment_id' => $environmentId],

@@ -145,7 +145,9 @@ export default function DataPengamatanPage() {
 
   const openModal = () => {
     setModalTrial(trialFilter);
-    reset({ replication: 1 });
+    // Auto-set environment when RP has exactly one linked environment
+    const autoEnv = trialFilter && trialEnvs.length === 1 ? trialEnvs[0].id : undefined;
+    reset({ replication: 1, ...(autoEnv ? { environment_id: autoEnv } : {}) });
     setIsModalOpen(true);
   };
 
@@ -288,14 +290,13 @@ export default function DataPengamatanPage() {
             </div>
 
             <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
-              {/* Trial selector (drives filtered envs + rep options) */}
+              {/* Research Plan selector — drives environment (auto) + replication options */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Research Plan</label>
                 <select
                   value={modalTrial}
                   onChange={(e) => {
                     setModalTrial(e.target.value);
-                    setValue("environment_id", 0 as never);
                     setValue("replication", 1);
                   }}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -307,6 +308,30 @@ export default function DataPengamatanPage() {
                   <p className="text-xs text-green-600 mt-1">{selectedTrialObj.replications} ulangan (R1–R{selectedTrialObj.replications})</p>
                 )}
               </div>
+
+              {/* Environment: auto-detected from RP; show read-only info or multi-select when multiple */}
+              {modalTrial && modalEnvironments.length > 0 && (
+                <div>
+                  {modalEnvironments.length === 1 ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm">
+                      <span className="text-green-700 font-medium text-xs">Lingkungan:</span>
+                      <span className="text-green-800 font-semibold">{modalEnvironments[0].name ?? modalEnvironments[0].environment_code}</span>
+                      {/* Hidden input auto-sets the value */}
+                      <input type="hidden" {...register("environment_id")} value={modalEnvironments[0].id} />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
+                      <select {...register("environment_id")} defaultValue=""
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                        <option value="" disabled>Pilih lingkungan</option>
+                        {modalEnvironments.map(env => <option key={env.id} value={env.id}>{env.name ?? env.environment_code}</option>)}
+                      </select>
+                      {errors.environment_id && <p className="text-xs text-red-500 mt-1">{errors.environment_id.message}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">No Plot</label>
@@ -325,19 +350,6 @@ export default function DataPengamatanPage() {
                   {genotypes.map((g) => <option key={g.id} value={g.id}>{g.genotype_code} — {g.genotype_name}</option>)}
                 </select>
                 {errors.genotype_id && <p className="text-xs text-red-500 mt-1">{errors.genotype_id.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Environment {modalTrial && <span className="text-xs text-gray-400">(dari trial)</span>}
-                </label>
-                <select {...register("environment_id")} defaultValue=""
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="" disabled>Pilih environment</option>
-                  {modalEnvironments.map((env) => <option key={env.id} value={env.id}>{env.environment_code}</option>)}
-                </select>
-                {errors.environment_id && <p className="text-xs text-red-500 mt-1">{errors.environment_id.message}</p>}
               </div>
 
               <div>

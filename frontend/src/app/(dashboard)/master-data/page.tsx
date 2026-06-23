@@ -189,10 +189,10 @@ export default function MasterDataPage() {
     tForm.reset({
       trial_code: t.trial_code,
       trial_name: t.trial_name,
+      environment_id: (t as Trial & { environment_id?: number }).environment_id ?? null,
       layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
       replications: t.replications,
       status: t.status as z.infer<typeof trialSchema>["status"],
-      // season_id and location_id not editable after creation
     });
     setIsModalOpen(true);
   };
