@@ -42,8 +42,8 @@ const genotypeSchema = z.object({
 const trialSchema = z.object({
   trial_code: z.string().min(1),
   trial_name: z.string().min(1),
-  environment_id: z.coerce.number().optional().nullable(),
-  planting_date: z.string().optional(),
+  season_id: z.preprocess(Number, z.number()).optional(),
+  location_id: z.preprocess(Number, z.number()).optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
   status: z.enum(["planned", "active", "harvested", "completed", "cancelled"]).default("planned"),
@@ -74,10 +74,15 @@ const storageSchema = z.object({
   unit_name: z.string().min(1),
   unit_type: z.enum(["refrigerator", "freezer", "cold_room", "dry_room", "cabinet", "shelf"]),
   room_name: z.string().optional(),
+  building: z.string().optional(),
   temperature_min: z.preprocess(toN, z.number().optional()),
   temperature_max: z.preprocess(toN, z.number().optional()),
+  humidity_min: z.preprocess(toN, z.number().min(0).max(100).optional()),
+  humidity_max: z.preprocess(toN, z.number().min(0).max(100).optional()),
   capacity_racks: z.preprocess(toN, z.number().optional()),
   capacity_boxes_per_rack: z.preprocess(toN, z.number().optional()),
+  status: z.string().optional(),
+  description: z.string().optional(),
 });
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -91,10 +96,14 @@ export default function MasterDataPage() {
   const [envFormKey, setEnvFormKey] = useState(0); // remount form on open
   const [showCharImport, setShowCharImport] = useState(false);
   const [charImportResult, setCharImportResult] = useState<{created:number;updated:number;skipped:number;errors:string[]} | null>(null);
+  const [showGenoImport, setShowGenoImport] = useState(false);
+  const [genoImportResult, setGenoImportResult] = useState<{created:number;updated:number;skipped:number} | null>(null);
+  const [editingTrial, setEditingTrial] = useState<Trial | null>(null);
   const [repExpanded, setRepExpanded] = useState<Set<number>>(new Set());
   const [repEditing, setRepEditing] = useState<number | null>(null);
   const [repEditVal, setRepEditVal] = useState(3);
   const charImportRef = useRef<HTMLInputElement>(null);
+  const genoImportRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -108,7 +117,7 @@ export default function MasterDataPage() {
   const { data: charsRes, isLoading: cLoading } = useQuery({ queryKey: ["characteristics-all"], queryFn: () => api.get<Characteristic[]>("/v1/phenotyping/characteristics").then(r => r.data) });
   const chars: Characteristic[] = charsRes ?? [];
 
-  const { data: envsRes, isLoading: eLoading } = useQuery({ queryKey: ["environments"], queryFn: () => api.get<{data:Environment[]}>("/v1/environments?per_page=100").then(r => r.data) });
+  const { data: envsRes, isLoading: eLoading } = useQuery({ queryKey: ["environments", "master-data-100"], queryFn: () => api.get<{data:Environment[]}>("/v1/environments?per_page=100").then(r => r.data), staleTime: 0 });
   const envs: Environment[] = envsRes?.data ?? [];
 
   const { data: seasons, isLoading: sLoading } = useQuery({ queryKey: ["seasons"], queryFn: () => api.get("/v1/seasons?all=false&per_page=50").then(r => r.data as {data:Season[]}) });
@@ -140,6 +149,14 @@ export default function MasterDataPage() {
   const envUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: EnvironmentFormData}) => api.put(`/v1/environments/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const envBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/environments/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan dihapus"); }, onError: () => toast.error("Sebagian lingkungan gagal dihapus") });
 
+  const tUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: z.infer<typeof trialSchema>}) => api.put(`/v1/trials/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+
+  const genoImportMutation = useMutation({
+    mutationFn: (file: File) => { const fd=new FormData(); fd.append("file",file); return api.post("/v1/genotypes/import-file", fd, {headers:{"Content-Type":"multipart/form-data"}}); },
+    onSuccess: res => { qc.invalidateQueries({queryKey:["genotypes"]}); const d=res.data as {created_count?:number;updated_count?:number;skipped_count?:number}; setGenoImportResult({created:d.created_count??0,updated:d.updated_count??0,skipped:d.skipped_count??0}); toast.success(`Import selesai: ${d.created_count??0} dibuat`); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
   const repUpdate = useMutation({ mutationFn: ({id,replications}: {id:number; replications:number}) => api.put(`/v1/trials/${id}`, {replications}), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Ulangan diperbarui"); setRepEditing(null); }, onError: e => toast.error(getApiErrorMessage(e)) });
 
   const sCreate = useMutation({ mutationFn: (d: z.infer<typeof seasonSchema>) => api.post("/v1/seasons", d), onSuccess: () => { qc.invalidateQueries({queryKey:["seasons"]}); toast.success("Musim ditambahkan"); closeModal(); sForm.reset(); }, onError: e => toast.error(getApiErrorMessage(e)) });
@@ -157,7 +174,20 @@ export default function MasterDataPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); };
+  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); setEditingTrial(null); };
+
+  const openEditTrial = (t: Trial) => {
+    setEditingTrial(t);
+    tForm.reset({
+      trial_code: t.trial_code,
+      trial_name: t.trial_name,
+      layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
+      replications: t.replications,
+      status: t.status as z.infer<typeof trialSchema>["status"],
+      // season_id and location_id not editable after creation
+    });
+    setIsModalOpen(true);
+  };
 
   const openCharEdit = (c: Characteristic) => {
     setEditingChar(c);
@@ -195,10 +225,9 @@ export default function MasterDataPage() {
   const tCols: ColumnDef<Trial, unknown>[] = [
     { header: "Kode", accessorKey: "trial_code", cell: ({getValue}) => <span className="font-mono font-bold text-green-700">{getValue() as string}</span> },
     { header: "Nama Research Plan", accessorKey: "trial_name" },
-    { header: "Lingkungan", id: "env", cell: ({row}) => <span className="text-xs">{(row.original as Trial & {environment?: {name?: string; environment_code?: string}}).environment?.name ?? row.original.location?.field_name ?? "-"}</span> },
-    { header: "Target Tanam", accessorKey: "planting_date", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? formatDate(getValue() as string) : "—"}</span> },
     { header: "Desain", accessorKey: "layout_design", cell: ({getValue}) => <span className="text-xs">{getValue() as string}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
+    { header: "Aksi", id: "tActions", cell: ({row}) => <button onClick={() => openEditTrial(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
   ];
 
   const cCols: ColumnDef<Characteristic, unknown>[] = [
@@ -260,6 +289,12 @@ export default function MasterDataPage() {
         actions={
           tabsShowingModal.includes(activeTab) ? (
             <div className="flex gap-2">
+              {activeTab === "genotypes" && (
+                <button onClick={() => setShowGenoImport(v => !v)}
+                  className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
+                  <Upload className="w-4 h-4" /> Import Excel
+                </button>
+              )}
               {activeTab === "characteristics" && (
                 <button onClick={() => setShowCharImport(v => !v)}
                   className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
@@ -302,6 +337,36 @@ export default function MasterDataPage() {
             </div>
           )}
           <p className="text-xs text-gray-400">Kolom: Kelompok Pengamatan · Karakter · Kode · Satuan · Metode Pengamatan · Desimal · Urutan. Kode sudah ada → update. Sel kosong → tidak mengubah nilai yang sudah ada.</p>
+        </div>
+      )}
+
+      {/* Genotipe import panel */}
+      {activeTab === "genotypes" && showGenoImport && (
+        <div className="bg-white rounded-xl border border-green-100 p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-medium text-gray-800 text-sm">Import Genotipe dari Excel</p>
+            <button onClick={() => setShowGenoImport(false)}><X className="w-4 h-4 text-gray-400" /></button>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <a href={`${API_BASE}/v1/genotypes/import-template`} download
+              className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-sm text-gray-600 rounded-lg hover:bg-gray-50 transition">
+              <Download className="w-4 h-4" /> Download Template
+            </a>
+            <button onClick={() => genoImportRef.current?.click()} disabled={genoImportMutation.isPending}
+              className="flex items-center gap-2 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-50">
+              <Upload className="w-4 h-4" /> {genoImportMutation.isPending ? "Mengimpor..." : "Upload & Import"}
+            </button>
+            <input ref={genoImportRef} type="file" accept=".xlsx,.xls,.csv" className="hidden"
+              onChange={e => { const f=e.target.files?.[0]; if(f) genoImportMutation.mutate(f); e.target.value=""; }} />
+          </div>
+          {genoImportResult && (
+            <div className="grid grid-cols-3 gap-3 text-center text-sm">
+              <div className="bg-green-50 rounded-lg p-2"><p className="text-lg font-bold text-green-700">{genoImportResult.created}</p><p className="text-xs text-gray-500">Dibuat</p></div>
+              <div className="bg-blue-50 rounded-lg p-2"><p className="text-lg font-bold text-blue-700">{genoImportResult.updated}</p><p className="text-xs text-gray-500">Diperbarui</p></div>
+              <div className="bg-gray-100 rounded-lg p-2"><p className="text-lg font-bold text-gray-600">{genoImportResult.skipped}</p><p className="text-xs text-gray-500">Dilewati</p></div>
+            </div>
+          )}
+          <p className="text-xs text-gray-400">Kolom template: genotype_code · genotype_name · category. Status default: aktif. Tipe trial default: normal.</p>
         </div>
       )}
 
@@ -390,7 +455,7 @@ export default function MasterDataPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className={`bg-white rounded-2xl shadow-2xl w-full max-h-[90vh] overflow-y-auto ${activeTab === "environments" ? "max-w-xl" : "max-w-lg"}`}>
             <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold">{activeTab === "environments" ? modalLabel[activeTab] : `Tambah ${modalLabel[activeTab]}`}</h3>
+              <h3 className="text-lg font-semibold">{(activeTab === "environments" || activeTab === "trials") ? modalLabel[activeTab] : `Tambah ${modalLabel[activeTab]}`}</h3>
               <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5"/></button>
             </div>
             <div className="p-6">
@@ -413,30 +478,23 @@ export default function MasterDataPage() {
 
               {/* Trial */}
               {activeTab === "trials" && (
-                <form onSubmit={tForm.handleSubmit(d => tCreate.mutate(d))} className="space-y-4">
+                <form onSubmit={tForm.handleSubmit(d => editingTrial ? tUpdate.mutate({id:editingTrial.id, d}) : tCreate.mutate(d))} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...tForm.register("trial_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="RP-2026-001" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...tForm.register("trial_code")} disabled={!!editingTrial} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50" placeholder="RP-2026-001" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select {...tForm.register("status")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["planned","Direncanakan"],["active","Aktif"],["harvested","Dipanen"],["completed","Selesai"],["cancelled","Dibatalkan"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
-                      <select {...tForm.register("environment_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                        <option value="">-- Pilih Lingkungan --</option>
-                        {envs.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
-                      </select>
+                  {!editingTrial && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><label className="block text-sm font-medium text-gray-700 mb-1">Musim *</label><select {...tForm.register("season_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{seasonsList?.map(s => <option key={s.id} value={s.id}>{s.season_name}</option>)}</select></div>
+                      <div><label className="block text-sm font-medium text-gray-700 mb-1">Lokasi *</label><select {...tForm.register("location_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"><option value="">-- Pilih --</option>{locationsList?.map(l => <option key={l.id} value={l.id}>{l.field_name}</option>)}</select></div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Target Penanaman</label>
-                      <input type="date" {...tForm.register("planting_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
-                    </div>
-                  </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Ulangan</label><input type="number" min="1" max="20" {...tForm.register("replications")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={tCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{tCreate.isPending?"Menyimpan...":"Buat Research Plan"}</button></div>
+                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={tCreate.isPending||tUpdate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{editingTrial ? "Simpan Perubahan" : "Buat Research Plan"}</button></div>
                 </form>
               )}
 
@@ -489,13 +547,31 @@ export default function MasterDataPage() {
                 <form onSubmit={suForm.handleSubmit(d => suCreate.mutate(d))} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...suForm.register("unit_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="RF003" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipe *</label><select {...suForm.register("unit_type")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["refrigerator","Kulkas"],["freezer","Freezer"],["cold_room","Cold Room"],["dry_room","Ruang Kering"],["cabinet","Kabinet"],["shelf","Rak"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipe *</label><select {...suForm.register("unit_type")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["refrigerator","Refrigerator"],["freezer","Freezer"],["cold_room","Cold Room"],["dry_room","Ruang Kering"],["cabinet","Kabinet"],["shelf","Rak"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Unit *</label><input {...suForm.register("unit_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Suhu Min (°C)</label><input type="number" {...suForm.register("temperature_min")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Suhu Max (°C)</label><input type="number" {...suForm.register("temperature_max")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Ruangan</label><input {...suForm.register("room_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Lab Benih" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Gedung</label><input {...suForm.register("building")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Gedung A" /></div>
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Suhu Min (°C)</label><input type="number" step="0.1" {...suForm.register("temperature_min")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Suhu Max (°C)</label><input type="number" step="0.1" {...suForm.register("temperature_max")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Humid Min (%)</label><input type="number" min="0" max="100" {...suForm.register("humidity_min")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Humid Max (%)</label><input type="number" min="0" max="100" {...suForm.register("humidity_max")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kapasitas Rak <span className="text-gray-400 font-normal">(opsional)</span></label><input type="number" min="0" {...suForm.register("capacity_racks")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kotak/Rak <span className="text-gray-400 font-normal">(opsional)</span></label><input type="number" min="0" {...suForm.register("capacity_boxes_per_rack")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <input {...suForm.register("status")} list="su-status-list" defaultValue="active" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                    <datalist id="su-status-list">{["active","maintenance","inactive","decommissioned","planned"].map(s => <option key={s} value={s} />)}</datalist>
+                  </div>
+                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label><textarea {...suForm.register("description")} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none" /></div>
                   <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={suCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{suCreate.isPending?"Menyimpan...":"Tambah Unit"}</button></div>
                 </form>
               )}

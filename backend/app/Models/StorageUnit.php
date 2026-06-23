@@ -13,7 +13,7 @@ class StorageUnit extends Model
     protected $fillable = [
         'unit_code', 'unit_name', 'unit_type', 'room_name', 'building',
         'temperature_min', 'temperature_max', 'humidity_min', 'humidity_max',
-        'capacity_racks', 'capacity_boxes_per_rack', 'description', 'is_active', 'created_by',
+        'capacity_racks', 'capacity_boxes_per_rack', 'description', 'status', 'is_active', 'created_by',
     ];
 
     protected $casts = [

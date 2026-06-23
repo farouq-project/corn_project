@@ -49,8 +49,10 @@ class StorageController extends Controller
             'capacity_racks' => ['nullable', 'integer', 'min:1'],
             'capacity_boxes_per_rack' => ['nullable', 'integer', 'min:1'],
             'description' => ['nullable', 'string'],
+            'status' => ['nullable', 'string', 'max:30'],
         ]);
 
+        if (empty($data['status'])) $data['status'] = 'active';
         $data['created_by'] = $request->user()->id;
         $unit = StorageUnit::create($data);
         AuditService::logCreated($unit);
@@ -76,6 +78,8 @@ class StorageController extends Controller
             'humidity_max' => ['nullable', 'numeric'],
             'capacity_racks' => ['nullable', 'integer'],
             'capacity_boxes_per_rack' => ['nullable', 'integer'],
+            'status' => ['nullable', 'string', 'max:30'],
+            'description' => ['nullable', 'string'],
             'is_active' => ['boolean'],
         ]);
 

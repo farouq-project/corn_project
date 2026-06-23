@@ -4,18 +4,10 @@ import { useState } from "react";
 import { Table2, Sigma } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Lazy-load the two heavy sub-pages to avoid loading both at once
-import dynamic from "next/dynamic";
-
-const DataPengamatanContent = dynamic(
-  () => import("@/app/(dashboard)/phenotyping/data-pengamatan/page"),
-  { loading: () => <div className="p-10 text-center text-gray-400 text-sm animate-pulse">Memuat Data Pengamatan...</div> }
-);
-
-const DataRataRataContent = dynamic(
-  () => import("@/app/(dashboard)/phenotyping/data-rata-rata/page"),
-  { loading: () => <div className="p-10 text-center text-gray-400 text-sm animate-pulse">Memuat Data Rata-Rata...</div> }
-);
+// Use regular imports (not dynamic) to avoid first-navigation "couldn't load" error.
+// Both are "use client" components so they're safe to import directly.
+import DataPengamatanPage from "@/app/(dashboard)/phenotyping/data-pengamatan/page";
+import DataRataRataPage from "@/app/(dashboard)/phenotyping/data-rata-rata/page";
 
 export default function KarakteristikPage() {
   const [tab, setTab] = useState<"pengamatan" | "rata-rata">("pengamatan");
@@ -42,9 +34,8 @@ export default function KarakteristikPage() {
         ))}
       </div>
 
-      {/* Content — each sub-page manages its own state and queries */}
-      {tab === "pengamatan" && <DataPengamatanContent />}
-      {tab === "rata-rata"  && <DataRataRataContent />}
+      {tab === "pengamatan" && <DataPengamatanPage />}
+      {tab === "rata-rata"  && <DataRataRataPage />}
     </div>
   );
 }
