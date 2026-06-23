@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Trial;
+use App\Models\TrialEnvironment;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -50,9 +51,13 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
+        // Extract environment_id before create (column doesn't exist on trials table)
+        $environmentId = $data['environment_id'] ?? null;
+        unset($data['environment_id']);
+
         // Derive location_id and season_id from environment if provided
-        if (!empty($data['environment_id'])) {
-            $env = \App\Models\Environment::find($data['environment_id']);
+        if ($environmentId) {
+            $env = \App\Models\Environment::find($environmentId);
             if ($env) {
                 $data['location_id'] = $data['location_id'] ?? $env->location_id;
                 $data['season_id'] = $data['season_id'] ?? $env->season_id;
@@ -65,6 +70,16 @@ class TrialController extends Controller
         }
 
         $trial = Trial::create($data);
+
+        // Link the selected Lingkungan (environment) to the trial via junction table
+        if ($environmentId && !\App\Models\TrialEnvironment::where('trial_id', $trial->id)->where('environment_id', $environmentId)->exists()) {
+            TrialEnvironment::create([
+                'trial_id' => $trial->id,
+                'environment_id' => $environmentId,
+                'status' => 'active',
+            ]);
+        }
+
         AuditService::logCreated($trial);
 
         return response()->json($trial->load(['season', 'location', 'principalResearcher']), 201);
@@ -97,8 +112,21 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
+        // Extract environment_id before update (not a column on trials table)
+        $environmentId = $data['environment_id'] ?? null;
+        unset($data['environment_id']);
+
         $original = $trial->getAttributes();
         $trial->update($data);
+
+        // Sync the Lingkungan link via trial_environments junction table
+        if ($environmentId) {
+            TrialEnvironment::firstOrCreate(
+                ['trial_id' => $trial->id, 'environment_id' => $environmentId],
+                ['status' => 'active']
+            );
+        }
+
         AuditService::logUpdated($trial, $original);
 
         return response()->json($trial->load(['season', 'location']));

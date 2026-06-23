@@ -63,14 +63,21 @@ export default function DataPengamatanPage() {
   });
   const allEnvironments: Environment[] = allEnvironmentsData ?? [];
 
-  // Environments for selected trial in the modal
+  // Environments for selected trial — fetched via trial_environments junction table
   const { data: trialEnvsData } = useQuery({
     queryKey: ["environments", "for-trial", modalTrial],
     queryFn: () =>
       api.get<{ data: Environment[] }>("/v1/environments", { params: { per_page: 100, trial_id: modalTrial } }).then((r) => r.data.data),
     enabled: !!modalTrial,
+    staleTime: 0,
   });
-  const modalEnvironments: Environment[] = modalTrial ? (trialEnvsData ?? []) : allEnvironments;
+
+  // If the trial has no junction-linked environments, fall back to ALL environments
+  // (this handles trials created before the junction-table fix)
+  const trialEnvs = trialEnvsData ?? [];
+  const modalEnvironments: Environment[] = modalTrial
+    ? (trialEnvs.length > 0 ? trialEnvs : allEnvironments)
+    : allEnvironments;
 
   const selectedTrialObj = useMemo(() => trials.find((t) => String(t.id) === modalTrial), [trials, modalTrial]);
   const maxReplications = selectedTrialObj?.replications ?? 10;
