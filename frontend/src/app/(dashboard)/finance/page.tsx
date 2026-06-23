@@ -123,10 +123,9 @@ export default function FinancePage() {
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
-  const approveMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: "approved" | "rejected" }) =>
-      api.post(`/v1/finance/expenses/${id}/approve`, { status }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["expenses"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] }); toast.success("Status diperbarui"); },
+  const deleteBudgetMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/finance/budgets/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] }); toast.success("Anggaran dihapus"); },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
@@ -258,20 +257,6 @@ export default function FinancePage() {
       accessorKey: "approval_status",
       cell: ({ getValue }) => <StatusBadge status={getValue() as string} />,
     },
-    {
-      header: "Aksi",
-      id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          {row.original.approval_status === "pending" && (
-            <>
-              <button onClick={() => approveMutation.mutate({ id: row.original.id, status: "approved" })} className="p-1.5 rounded hover:bg-green-50 text-green-500 transition" title="Setujui"><CheckCircle2 className="w-4 h-4" /></button>
-              <button onClick={() => approveMutation.mutate({ id: row.original.id, status: "rejected" })} className="p-1.5 rounded hover:bg-red-50 text-red-500 transition" title="Tolak"><XCircle className="w-4 h-4" /></button>
-            </>
-          )}
-        </div>
-      ),
-    },
   ];
 
   const totalApproved = expenses.filter(e => e.approval_status === "approved").reduce((s, e) => s + e.amount, 0);
@@ -291,6 +276,7 @@ export default function FinancePage() {
       <PageHeader
         title="Keuangan & Anggaran"
         description="Kelola pengeluaran penelitian dan monitoring anggaran per Research Plan"
+
         actions={
           <button onClick={() => { setTrialId(trialFilter); setIsExpenseModalOpen(true); }}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
@@ -405,8 +391,31 @@ export default function FinancePage() {
             <DataTable data={expenses} columns={expenseColumns} isLoading={expensesLoading}
               searchPlaceholder="Cari pengeluaran..." emptyMessage="Belum ada pengeluaran" />
           )}
-          {activeTab === "budgets" && (
+          {activeTab === "budgets" && (() => {
+            const totalPemasukan = budgets.reduce((s, b) => s + b.total_amount, 0);
+            const totalKeluar = expenses.filter(e => e.approval_status !== "rejected").reduce((s, e) => s + e.amount, 0);
+            const sisaDana = totalPemasukan - totalKeluar;
+            const pct = totalPemasukan > 0 ? Math.min(100, (totalKeluar / totalPemasukan) * 100) : 0;
+            return (
             <>
+              {/* Total Pemasukan + Sisa Dana */}
+              {totalPemasukan > 0 && (
+                <div className="grid grid-cols-2 gap-4 mb-5">
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                    <p className="text-xs text-blue-600 font-medium mb-1">Total Pemasukan</p>
+                    <p className="text-xl font-bold text-blue-800">{formatCurrency(totalPemasukan)}</p>
+                    <p className="text-xs text-blue-400 mt-0.5">Total anggaran tersedia</p>
+                  </div>
+                  <div className={`rounded-xl p-4 border ${sisaDana < 0 ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
+                    <p className={`text-xs font-medium mb-1 ${sisaDana < 0 ? "text-red-600" : "text-green-600"}`}>Sisa Dana</p>
+                    <p className={`text-xl font-bold ${sisaDana < 0 ? "text-red-800" : "text-green-800"}`}>{formatCurrency(Math.abs(sisaDana))}{sisaDana < 0 ? " (defisit)" : ""}</p>
+                    <div className="mt-2 w-full h-2 bg-white/60 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="text-xs mt-0.5 opacity-70">{pct.toFixed(1)}% terpakai</p>
+                  </div>
+                </div>
+              )}
               <div className="flex justify-end mb-4">
                 <button onClick={() => { setEditingBudget(null); budgetForm.reset(); setIsBudgetModalOpen(true); }}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
@@ -421,10 +430,16 @@ export default function FinancePage() {
                   { header: "Total", accessorKey: "total_amount", cell: ({ getValue }) => <span className="font-semibold">{formatCurrency(getValue() as number)}</span> },
                   { header: "Masa Berlaku", id: "period", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.start_date)} – {formatDate(row.original.end_date)}</span> },
                   { header: "Status", accessorKey: "status", cell: ({ getValue }) => <StatusBadge status={getValue() as string} /> },
-                  { header: "Aksi", id: "budgetAct", cell: ({ row }) => <button onClick={() => openEditBudget(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600"><Edit2 className="w-3.5 h-3.5" /></button> },
+                  { header: "Aksi", id: "budgetAct", cell: ({ row }) => (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => openEditBudget(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600" title="Edit"><Edit2 className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => { if (confirm(`Hapus anggaran "${row.original.budget_name}"?`)) deleteBudgetMutation.mutate(row.original.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Hapus"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )},
                 ]} />
             </>
-          )}
+            );
+          })()}
         </div>
       </div>
 
@@ -499,7 +514,7 @@ export default function FinancePage() {
                     <Upload className="w-5 h-5" />
                     {uploadingReceipt ? "..." : "Upload"}
                   </button>
-                  <input ref={receiptInputRef} type="file" accept="image/*,application/pdf" className="hidden"
+                  <input ref={receiptInputRef} type="file" accept="image/*,application/pdf" capture="environment" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) handleReceiptUpload(f); e.target.value = ""; }} />
                 </div>
               </div>

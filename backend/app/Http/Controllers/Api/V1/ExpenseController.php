@@ -52,6 +52,36 @@ class ExpenseController extends Controller
         return response()->json($budget, 201);
     }
 
+    public function budgetUpdate(Request $request, Budget $budget): JsonResponse
+    {
+        $data = $request->validate([
+            'budget_name' => ['sometimes', 'string'],
+            'funding_source' => ['nullable', 'string'],
+            'total_amount' => ['sometimes', 'numeric', 'min:0'],
+            'start_date' => ['sometimes', 'date'],
+            'end_date' => ['sometimes', 'date'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $original = $budget->getAttributes();
+        $budget->update($data);
+        AuditService::logUpdated($budget, $original);
+
+        return response()->json($budget);
+    }
+
+    public function budgetDestroy(Budget $budget): JsonResponse
+    {
+        if ($budget->expenses()->exists()) {
+            return response()->json(['message' => 'Anggaran tidak dapat dihapus karena masih memiliki pengeluaran terkait.'], 422);
+        }
+
+        AuditService::logDeleted($budget);
+        $budget->delete();
+
+        return response()->json(['message' => 'Anggaran berhasil dihapus.']);
+    }
+
     public function expenseIndex(Request $request): JsonResponse
     {
         $query = Expense::with(['category', 'trial', 'budget', 'submitter'])

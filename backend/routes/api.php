@@ -265,6 +265,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('budgets', [ExpenseController::class, 'budgetIndex']);
             Route::post('budgets', [ExpenseController::class, 'budgetStore']);
+            Route::put('budgets/{budget}', [ExpenseController::class, 'budgetUpdate']);
+            Route::delete('budgets/{budget}', [ExpenseController::class, 'budgetDestroy']);
 
             Route::get('expenses', [ExpenseController::class, 'expenseIndex']);
             Route::post('expenses', [ExpenseController::class, 'expenseStore']);

@@ -25,7 +25,7 @@ import { formatDate, cn } from "@/lib/utils";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 type TabType = "genotypes" | "trials" | "characteristics" | "environments" | "replications"
-             | "seasons" | "storage_units";
+             | "storage_units";
 
 const toN = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
 
@@ -180,7 +180,6 @@ export default function MasterDataPage() {
     { id: "characteristics",label: "Pengamatan",       icon: Microscope, count: chars.length },
     { id: "environments",   label: "Lingkungan",       icon: MapPin,     count: envs.length },
     { id: "replications",   label: "Ulangan (R)",      icon: Repeat2,    count: trials.length },
-    { id: "seasons",        label: "Musim Tanam",      icon: Calendar,   count: (seasons as {data:Season[]})?.data?.length ?? 0 },
     { id: "storage_units",  label: "Unit Penyimpanan", icon: Package,    count: (storageUnits as {data:StorageUnit[]})?.data?.length ?? 0 },
   ];
 
@@ -212,9 +211,18 @@ export default function MasterDataPage() {
   ];
 
   const envCols: ColumnDef<Environment, unknown>[] = [
-    { header: "Nama Lingkungan", id: "envName", cell: ({row}) => <span className="font-medium text-gray-800">{(row.original as Environment & {name?:string}).name ?? row.original.environment_code}</span> },
+    { header: "Nama Kebun Percobaan", id: "envName", cell: ({row}) => <span className="font-medium text-gray-800">{row.original.name ?? row.original.environment_code}</span> },
     { header: "Kode", accessorKey: "environment_code", cell: ({getValue}) => <span className="font-mono text-xs text-green-700">{getValue() as string}</span> },
-    { header: "Musim", accessorKey: "season.season_name", cell: ({row}) => <span className="text-xs">{row.original.season?.season_name ?? "-"}</span> },
+    {
+      header: "Musim",
+      id: "musim",
+      cell: ({row}) => {
+        const env = row.original as Environment & { season_name?: string };
+        const val = env.season_name || row.original.season?.season_name;
+        return <span className="text-xs">{val ?? "—"}</span>;
+      },
+    },
+    { header: "Perlakuan", id: "perlakuan", cell: ({row}) => <span className="text-xs text-gray-500">{(row.original as Environment & {perlakuan?:string}).perlakuan ?? "—"}</span> },
     { header: "Elevasi", accessorKey: "elevation_m", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()} m` : "—"}</span> },
     { header: "Suhu", accessorKey: "avg_temperature_c", cell: ({getValue}) => <span className="text-xs text-gray-500">{getValue() ? `${getValue()}°C` : "—"}</span> },
     { header: "Aksi", id: "eActions", cell: ({row}) => <button onClick={() => openEnvEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5" /></button> },
@@ -237,11 +245,11 @@ export default function MasterDataPage() {
     { header: "Status", accessorKey: "is_active", cell: ({getValue}) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
   ];
 
-  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","seasons","storage_units"];
+  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","storage_units"];
   const modalLabel: Record<TabType, string> = {
     genotypes: "Genotipe", trials: "Research Plan", characteristics: editingChar ? "Edit Karakter" : "Karakter",
     environments: editingEnv ? "Edit Lingkungan" : "Lingkungan", replications: "Ulangan",
-    seasons: "Musim Tanam", storage_units: "Unit Penyimpanan",
+    storage_units: "Unit Penyimpanan",
   };
 
   return (
@@ -316,7 +324,7 @@ export default function MasterDataPage() {
           {activeTab === "genotypes" && <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} />}
 
           {/* ── Trial ── */}
-          {activeTab === "trials" && <DataTable data={trials} columns={tCols} isLoading={tLoading} searchPlaceholder="Cari kode atau nama trial..." emptyMessage="Belum ada trial" getRowId={r => String(r.id)} onBulkDelete={rows => tBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={tBulkDel.isPending} />}
+          {activeTab === "trials" && <DataTable data={trials} columns={tCols} isLoading={tLoading} searchPlaceholder="Cari kode atau nama research plan..." emptyMessage="Belum ada research plan" getRowId={r => String(r.id)} onBulkDelete={rows => tBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={tBulkDel.isPending} />}
 
           {/* ── Pengamatan / Karakteristik ── */}
           {activeTab === "characteristics" && <DataTable data={chars} columns={cCols} isLoading={cLoading} searchPlaceholder="Cari kode atau nama karakter..." emptyMessage="Belum ada karakter" getRowId={r => String(r.id)} onBulkDelete={rows => cBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={cBulkDel.isPending} />}
@@ -371,9 +379,6 @@ export default function MasterDataPage() {
               })}
             </div>
           )}
-
-          {/* ── Musim Tanam ── */}
-          {activeTab === "seasons" && <DataTable data={(seasons as {data:Season[]})?.data ?? []} columns={sCols} isLoading={sLoading} searchPlaceholder="Cari musim..." emptyMessage="Belum ada musim" getRowId={r => String(r.id)} onBulkDelete={rows => sBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={sBulkDel.isPending} />}
 
           {/* ── Unit Penyimpanan ── */}
           {activeTab === "storage_units" && <DataTable data={(storageUnits as {data:StorageUnit[]})?.data ?? []} columns={suCols} isLoading={suLoading} searchPlaceholder="Cari unit penyimpanan..." emptyMessage="Belum ada unit" getRowId={r => String(r.id)} onBulkDelete={rows => suBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={suBulkDel.isPending} />}
@@ -478,21 +483,6 @@ export default function MasterDataPage() {
                 />
               )}
 
-              {/* Musim Tanam */}
-              {activeTab === "seasons" && (
-                <form onSubmit={sForm.handleSubmit(d => sCreate.mutate(d))} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode *</label><input {...sForm.register("season_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="MH2026" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select {...sForm.register("status")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["upcoming","Akan Datang"],["active","Aktif"],["completed","Selesai"],["cancelled","Dibatalkan"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
-                  </div>
-                  <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Musim *</label><input {...sForm.register("season_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Musim Hujan 2026/2027" /></div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Mulai *</label><input type="date" {...sForm.register("start_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Akhir *</label><input type="date" {...sForm.register("end_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
-                  </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={sCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{sCreate.isPending?"Menyimpan...":"Tambah Musim"}</button></div>
-                </form>
-              )}
 
               {/* Unit Penyimpanan */}
               {activeTab === "storage_units" && (

@@ -43,7 +43,7 @@ const navigation = [
   {
     label: "Master Data",
     items: [
-      { name: "Master Data", href: "/master-data", icon: Map },
+      { name: "Master Data", href: "/master-data", icon: Map }, // includes Research Plan (trials)
     ],
   },
   {
@@ -55,7 +55,6 @@ const navigation = [
   {
     label: "Administrasi",
     items: [
-      { name: "Inventaris Benih", href: "/storage", icon: Package },
       { name: "Dokumen Penelitian", href: "/documents", icon: FileText },
       { name: "Pelepasan Varietas", href: "/variety-candidates", icon: Award },
       { name: "Pengguna", href: "/users", icon: Users },

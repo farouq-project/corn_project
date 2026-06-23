@@ -38,7 +38,7 @@ interface RowData {
 
 const columnHelper = createColumnHelper<RowData>();
 
-const DEFAULT_PINNED_COLUMNS: string[] = []; // no columns pinned by default
+const DEFAULT_PINNED_COLUMNS = ["plot_no", "genotype_code", "genotype_name", "environment_code", "replication"];
 
 const STATIC_COLUMN_LABELS: Record<string, string> = {
   plot_no: "No Plot",
@@ -107,12 +107,25 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
     [records, characteristics]
   );
 
+  const COLUMN_WIDTHS: Record<string, number> = {
+    plot_no: 70,
+    genotype_code: 80,
+    genotype_name: 90,
+    environment_code: 80, // compact — wraps if needed
+    replication: 44,
+  };
+
   const columns = useMemo<ColumnDef<RowData, unknown>[]>(() => {
     const staticCols = (["plot_no", "genotype_code", "genotype_name", "environment_code", "replication"] as const).map((id) =>
       columnHelper.accessor(id, {
         id,
+        size: COLUMN_WIDTHS[id],
         header: STATIC_COLUMN_LABELS[id],
-        cell: (info) => <span className="whitespace-nowrap">{info.getValue() as string | number}</span>,
+        cell: (info) => (
+          <span className={id === "environment_code" ? "block text-xs leading-tight break-words whitespace-normal max-w-[80px]" : "whitespace-nowrap"}>
+            {info.getValue() as string | number}
+          </span>
+        ),
       })
     );
 
@@ -206,7 +219,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    style={getPinningStyles(header.column)}
+                    style={{ ...getPinningStyles(header.column), width: header.column.getSize() || undefined, maxWidth: header.column.getSize() || undefined }}
                     className={cn(
                       "px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 sticky top-0 bg-gray-50",
                       header.column.getIsPinned() && "bg-gray-50"

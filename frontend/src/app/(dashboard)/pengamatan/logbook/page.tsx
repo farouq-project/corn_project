@@ -251,7 +251,7 @@ export default function LogbookPage() {
                     <Camera className="w-5 h-5" />
                     {uploadingPhoto ? "..." : "Foto"}
                   </button>
-                  <input ref={photoInputRef} type="file" accept="image/*" className="hidden"
+                  <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoUpload(f); e.target.value = ""; }} />
                 </div>
               </div>
