@@ -68,14 +68,15 @@ class PhenotypingValidationEngine
             }
         }
 
-        // Required: environment_code must resolve
+        // Required: environment_code must resolve (warn rather than error — confirmImport auto-creates if missing)
         $environmentId = null;
         if (blank($norm['environment_code'] ?? null)) {
             $errors[] = "Baris {$rowNumber}: Environment kosong.";
         } else {
             $environmentId = $this->environmentCache[strtoupper($norm['environment_code'])] ?? null;
             if (!$environmentId) {
-                $errors[] = "Baris {$rowNumber}: Environment '{$norm['environment_code']}' tidak ditemukan.";
+                // Warn, not error — confirmImport will create a Lokasi with this name if it doesn't exist
+                $warnings[] = "Baris {$rowNumber}: Lokasi '{$norm['environment_code']}' belum ada di Master Data — akan dibuat otomatis saat konfirmasi.";
             }
         }
 

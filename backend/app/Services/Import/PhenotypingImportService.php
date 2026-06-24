@@ -211,8 +211,16 @@ class PhenotypingImportService
             ->get(['id', 'code', 'decimal_places'])
             ->keyBy(fn($c) => strtoupper($c->code));
 
-        $environmentCache = Environment::pluck('id', 'environment_code')
-            ->mapWithKeys(fn($id, $code) => [strtoupper($code) => $id]);
+        // Build environment cache by code AND by name for flexible lookup
+        $environmentCache = [];
+        Environment::select(['id', 'environment_code', 'name'])
+            ->get()
+            ->each(function ($e) use (&$environmentCache) {
+                $environmentCache[strtoupper($e->environment_code)] = $e->id;
+                if ($e->name) {
+                    $environmentCache[strtoupper($e->name)] = $e->id;
+                }
+            });
 
         $genotypeCache = [];
         Genotype::whereIn('status', ['active', 'inactive'])
@@ -230,14 +238,34 @@ class PhenotypingImportService
 
         $importedCount = 0;
 
-        DB::transaction(function () use ($rows, $characteristicCache, $environmentCache, $genotypeCache, $batch, $confirmedByUserId, &$importedCount) {
+        DB::transaction(function () use ($rows, $characteristicCache, &$environmentCache, $genotypeCache, $batch, $confirmedByUserId, &$importedCount) {
             foreach ($rows as $row) {
                 $norm = $row->normalized_data;
                 if (empty($norm)) continue;
 
                 $genotypeId = $genotypeCache[strtoupper($norm['genotype_code'] ?? '')] ?? null;
-                $environmentId = $environmentCache[strtoupper($norm['environment_code'] ?? '')] ?? null;
-                if (!$genotypeId || !$environmentId) continue;
+                if (!$genotypeId) continue;
+
+                $envKey = strtoupper($norm['environment_code'] ?? '');
+                $environmentId = $environmentCache[$envKey] ?? null;
+
+                // Auto-create a Lokasi entry if environment not found in Master Data
+                if (!$environmentId && $envKey !== '') {
+                    $envName = $norm['environment_code'];
+                    $envCode = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', substr($envName, 0, 6))) . '-' . date('y');
+                    $count = \App\Models\Environment::where('environment_code', 'like', $envCode . '%')->count();
+                    $finalCode = $count > 0 ? $envCode . '-' . ($count + 1) : $envCode;
+
+                    $newEnv = \App\Models\Environment::create([
+                        'name' => $envName,
+                        'environment_code' => $finalCode,
+                        'created_by' => $confirmedByUserId,
+                    ]);
+                    $environmentId = $newEnv->id;
+                    $environmentCache[$envKey] = $environmentId;
+                }
+
+                if (!$environmentId) continue;
 
                 $environment = Environment::find($environmentId);
 
