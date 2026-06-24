@@ -25,9 +25,15 @@ class PhenotypingValidationEngine
                 }
             });
 
-        Environment::select(['id', 'environment_code'])
+        Environment::select(['id', 'environment_code', 'name'])
             ->get()
-            ->each(fn($e) => $this->environmentCache[strtoupper($e->environment_code)] = $e->id);
+            ->each(function ($e) {
+                $this->environmentCache[strtoupper($e->environment_code)] = $e->id;
+                // Also index by user-defined name so "NORMAL" matches a Lingkungan named "Normal"
+                if ($e->name) {
+                    $this->environmentCache[strtoupper($e->name)] = $e->id;
+                }
+            });
 
         Characteristic::active()
             ->get(['id', 'code', 'decimal_places'])

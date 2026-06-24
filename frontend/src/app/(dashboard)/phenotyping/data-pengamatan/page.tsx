@@ -28,6 +28,7 @@ export default function DataPengamatanPage() {
   const queryClient = useQueryClient();
 
   // ── Wizard state ────────────────────────────────────────────────────────────
+  const [dismissedBatchIds, setDismissedBatchIds] = useState<Set<number>>(new Set());
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1|2|3>(1);
   // Step 1 fields
@@ -236,7 +237,7 @@ export default function DataPengamatanPage() {
           {/* Batch list */}
           {batches.length > 0 && (
             <div className="rounded-lg border border-gray-200 overflow-hidden">
-              {batches.slice(0,5).map(b => (
+              {batches.filter(b => !dismissedBatchIds.has(b.id)).slice(0,5).map(b => (
                 <div key={b.id} onClick={() => setSelectedBatchId(b.id===selectedBatchId?null:b.id)} className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-gray-50 transition border-b last:border-0 ${selectedBatchId===b.id?"bg-green-50":""}`}>
                   <div className="flex-1 min-w-0"><p className="text-xs font-medium text-gray-800 truncate">{b.original_filename}</p><p className="text-[10px] text-gray-400">{b.batch_code} · {b.total_rows} baris</p></div>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${STATUS_COLOR[b.status]??"bg-gray-100 text-gray-500"}`}>{STATUS_LABEL[b.status]??b.status}</span>
@@ -254,8 +255,14 @@ export default function DataPengamatanPage() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 {selectedBatch.status==="parsed" && <button onClick={() => validateMutation.mutate(selectedBatch.id)} disabled={validateMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50"><RefreshCw className="w-3.5 h-3.5"/>{validateMutation.isPending?"Memvalidasi...":"Validasi"}</button>}
-                {selectedBatch.status==="validated" && <button onClick={() => { if(confirm(`Import ${selectedBatch.valid_rows} baris valid?`)) confirmMutation.mutate(selectedBatch.id); }} disabled={confirmMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"><CheckCircle className="w-3.5 h-3.5"/>{confirmMutation.isPending?"Mengimpor...":`Konfirmasi (${selectedBatch.valid_rows} baris)`}</button>}
-                {selectedBatch.status==="completed" && !selectedBatch.is_rolled_back && <button onClick={() => { if(confirm("Rollback akan menghapus data yang diimpor. Lanjutkan?")) rollbackMutation.mutate(selectedBatch.id); }} disabled={rollbackMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-50 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/>Rollback</button>}
+                {selectedBatch.status==="validated" && <>
+                  <button onClick={() => { if(confirm(`Import ${selectedBatch.valid_rows} baris valid?`)) { confirmMutation.mutate(selectedBatch.id); setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); } }} disabled={confirmMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white text-xs rounded-lg hover:bg-green-700 disabled:opacity-50"><CheckCircle className="w-3.5 h-3.5"/>{confirmMutation.isPending?"Mengimpor...":`Konfirmasi (${selectedBatch.valid_rows} baris)`}</button>
+                  <button onClick={() => { setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); }} className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50"><X className="w-3.5 h-3.5"/>Batalkan</button>
+                </>}
+                {selectedBatch.status==="completed" && !selectedBatch.is_rolled_back && <>
+                  <button onClick={() => { if(confirm("Rollback akan menghapus data yang diimpor. Lanjutkan?")) { rollbackMutation.mutate(selectedBatch.id); setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); } }} disabled={rollbackMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-50 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/>Rollback</button>
+                  <button onClick={() => { setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); }} className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50"><X className="w-3.5 h-3.5"/>Tutup</button>
+                </>}
               </div>
               {/* Preview rows */}
               {["validated","completed"].includes(selectedBatch.status) && (

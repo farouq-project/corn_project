@@ -54,14 +54,31 @@ class ObservationRecordController extends Controller
         $values = $data['values'] ?? [];
         unset($data['values']);
 
-        $record = ObservationRecord::create($data);
+        // If a soft-deleted record exists with the same unique key, restore it
+        $existing = ObservationRecord::withTrashed()
+            ->where('environment_id', $data['environment_id'])
+            ->where('season_id', $data['season_id'] ?? null)
+            ->where('plot_no', $data['plot_no'])
+            ->where('replication', $data['replication'])
+            ->first();
+
+        if ($existing && $existing->trashed()) {
+            $existing->restore();
+            $existing->update(array_diff_key($data, ['record_code' => true]));
+            $record = $existing;
+        } elseif ($existing) {
+            return response()->json([
+                'message' => "Plot '{$data['plot_no']}' R{$data['replication']} sudah ada untuk environment ini. Gunakan fitur edit untuk mengubah nilainya.",
+            ], 422);
+        } else {
+            $record = ObservationRecord::create($data);
+        }
 
         foreach ($values as $value) {
-            ObservationValue::create([
-                'observation_record_id' => $record->id,
-                'characteristic_id' => $value['characteristic_id'],
-                'value' => $value['value'] ?? null,
-            ]);
+            ObservationValue::updateOrCreate(
+                ['observation_record_id' => $record->id, 'characteristic_id' => $value['characteristic_id']],
+                ['value' => $value['value'] ?? null]
+            );
         }
 
         AuditService::logCreated($record);
@@ -112,7 +129,8 @@ class ObservationRecordController extends Controller
     public function destroy(ObservationRecord $record): JsonResponse
     {
         AuditService::logDeleted($record);
-        $record->delete();
+        $record->values()->delete();
+        $record->forceDelete(); // hard-delete so the same plot/rep can be re-entered
 
         return response()->json(['message' => 'Observation record deleted.']);
     }
