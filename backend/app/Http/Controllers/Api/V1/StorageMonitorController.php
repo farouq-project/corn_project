@@ -52,6 +52,29 @@ class StorageMonitorController extends Controller
         return response()->json($entry->load('recorder'), 201);
     }
 
+    public function update(Request $request, StorageMonitorEntry $storageMonitorEntry): JsonResponse
+    {
+        $data = $request->validate([
+            'prev_code' => ['nullable', 'string', 'max:50'],
+            'new_code' => ['nullable', 'string', 'max:50'],
+            'prev_box' => ['nullable', 'string', 'max:100'],
+            'new_box' => ['nullable', 'string', 'max:100'],
+            'genotype_name' => ['nullable', 'string'],
+            'prev_packaging' => ['nullable', 'string', 'max:100'],
+            'new_packaging' => ['nullable', 'string', 'max:100'],
+            'harvest_date' => ['nullable', 'date'],
+            'seed_weight' => ['nullable', 'numeric', 'min:0'],
+            'moisture_content' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'notes' => ['nullable', 'string'],
+        ]);
+
+        $original = $storageMonitorEntry->getAttributes();
+        $storageMonitorEntry->update($data);
+        AuditService::logUpdated($storageMonitorEntry, $original);
+
+        return response()->json($storageMonitorEntry->load('recorder'));
+    }
+
     public function destroy(StorageMonitorEntry $storageMonitorEntry): JsonResponse
     {
         AuditService::logDeleted($storageMonitorEntry);

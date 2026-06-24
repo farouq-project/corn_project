@@ -44,7 +44,7 @@ const STATIC_COLUMN_LABELS: Record<string, string> = {
   plot_no: "No Plot",
   genotype_code: "Kode Gen",
   genotype_name: "Gen",
-  environment_code: "Environment",
+  environment_code: "Lokasi",
   replication: "R",
 };
 
@@ -103,7 +103,8 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
         plot_no: record.plot_no,
         genotype_code: record.genotype?.genotype_code ?? "",
         genotype_name: record.genotype?.genotype_name ?? "",
-        environment_code: record.environment?.environment_code ?? "",
+        // Prefer user-defined name over auto-generated code (matches what's in Master Data)
+        environment_code: record.environment?.name ?? record.environment?.environment_code ?? "",
         replication: record.replication,
         ...Object.fromEntries(characteristics.map((c) => [c.code, record.values?.[c.code] ?? null])),
       })),

@@ -57,6 +57,7 @@ Route::prefix('v1')->group(function () {
         Route::get('storage-monitor', [StorageMonitorController::class, 'index']);
         Route::post('storage-monitor', [StorageMonitorController::class, 'store']);
         Route::delete('storage-monitor/{storageMonitorEntry}', [StorageMonitorController::class, 'destroy']);
+        Route::put('storage-monitor/{storageMonitorEntry}', [StorageMonitorController::class, 'update']);
         Route::post('storage-monitor/import', [StorageMonitorController::class, 'import']);
 
         // Auth
