@@ -104,22 +104,41 @@ class PhenotypingImportService
         foreach ($stagingRows as $row) {
             $raw = $row->raw_data ?? [];
 
+            // Normalise raw keys: lowercase + strip asterisks + trim
+            // This handles templates with "NO PLOT *", "KODE GEN *", etc.
+            $norm_key = fn($k) => strtolower(trim(str_replace(['*', '(wajib)', '(required)'], '', (string)$k)));
+            $rawN = [];
+            foreach ($raw as $k => $v) {
+                $rawN[$norm_key($k)] = $v;
+            }
+
+            // Helper: look up by multiple possible normalised key aliases
+            $pick = fn(array $aliases) => collect($aliases)
+                ->map(fn($a) => $rawN[$a] ?? null)
+                ->first(fn($v) => $v !== null);
+
             $norm = [
-                'plot_no' => $this->normalizer->normalizePlotNo($raw['No Plot'] ?? $raw['no_plot'] ?? null),
-                'genotype_code' => $this->normalizer->normalizeGenotypeCode($raw['Kode Gen'] ?? $raw['kode_gen'] ?? null),
-                'genotype_name' => trim($raw['Gen'] ?? $raw['gen'] ?? ''),
-                'environment_code' => trim(strtoupper($raw['Environment'] ?? $raw['environment'] ?? '')),
-                'replication' => $this->normalizer->normalizeReplication($raw['R'] ?? $raw['r'] ?? null),
+                'plot_no' => $this->normalizer->normalizePlotNo($pick(['no plot', 'no_plot', 'no.plot', 'nomor plot', 'plot'])),
+                'genotype_code' => $this->normalizer->normalizeGenotypeCode($pick(['kode gen', 'kode_gen', 'kode genotipe', 'genotype_code', 'kode'])),
+                'genotype_name' => trim((string) ($pick(['gen', 'genotipe', 'nama genotipe', 'genotype_name']) ?? '')),
+                'environment_code' => strtoupper(trim((string) ($pick(['environment', 'env', 'lingkungan', 'kode env']) ?? ''))),
+                'replication' => $this->normalizer->normalizeReplication($pick(['r', 'replikasi', 'ulangan', 'replication', 'rep'])),
                 'values' => [],
             ];
 
-            // Extract characteristic values from remaining columns
-            $staticKeys = ['No Plot', 'no_plot', 'Kode Gen', 'kode_gen', 'Gen', 'gen', 'Environment', 'environment', 'R', 'r'];
+            // Static key aliases to exclude from characteristic columns
+            $staticAliases = ['no plot','no_plot','no.plot','nomor plot','plot',
+                'kode gen','kode_gen','kode genotipe','genotype_code','kode',
+                'gen','genotipe','nama genotipe','genotype_name',
+                'environment','env','lingkungan','kode env',
+                'r','replikasi','ulangan','replication','rep'];
+
             foreach ($raw as $colKey => $cellVal) {
-                if (in_array($colKey, $staticKeys, true)) continue;
+                $normalizedKey = $norm_key($colKey);
+                if (in_array($normalizedKey, $staticAliases, true)) continue;
                 // Strip unit in parentheses: "TT (cm)" → "TT"
-                $code = strtoupper(trim(preg_replace('/\s*\(.*\)/', '', $colKey)));
-                if ($code === '') continue;
+                $code = strtoupper(trim(preg_replace('/\s*\(.*\)/', '', $normalizedKey)));
+                if ($code === '' || $code === '*') continue;
                 // Empty cell → 0 (store as zero, not skip)
                 $norm['values'][$code] = ($cellVal === '' || $cellVal === null)
                     ? 0.0

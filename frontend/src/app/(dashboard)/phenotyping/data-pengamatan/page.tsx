@@ -118,8 +118,15 @@ export default function DataPengamatanPage() {
   };
 
   const submitWizard = async (continueNext: boolean) => {
-    const envId = wizEnv ?? (wizEnvOptions.length === 1 ? wizEnvOptions[0].id : null);
-    if (!envId) { toast.error("Lingkungan tidak ditemukan"); return; }
+    // Resolve environment: use wizard state, fall back to single env in list
+    const resolvedEnv = wizEnv ?? (wizEnvOptions.length === 1 ? wizEnvOptions[0].id : null);
+    const genoId = Number(wizGeno);
+
+    // Pre-submit validation
+    if (!wizPlot.trim()) { toast.error("No Plot wajib diisi"); return; }
+    if (!genoId || isNaN(genoId)) { toast.error("Genotipe wajib dipilih"); return; }
+    if (!resolvedEnv) { toast.error("Lingkungan tidak ditemukan — pastikan Research Plan sudah terhubung dengan Lingkungan"); return; }
+    if (selectedCharCodes.size === 0) { toast.error("Pilih minimal satu karakteristik di langkah sebelumnya"); return; }
 
     const selectedChars = characteristics.filter(c => selectedCharCodes.has(c.code));
     const values = selectedChars.map(c => ({
@@ -131,13 +138,13 @@ export default function DataPengamatanPage() {
     try {
       await phenotypingService.createRecord({
         plot_no: wizPlot.trim(),
-        genotype_id: Number(wizGeno),
-        environment_id: envId,
+        genotype_id: genoId,
+        environment_id: resolvedEnv,
         replication: wizRep,
         values,
-      });
+      } as Parameters<typeof phenotypingService.createRecord>[0]);
       queryClient.invalidateQueries({ queryKey: ["observation-records"] });
-      toast.success(`Plot ${wizPlot} berhasil disimpan`);
+      toast.success(`Plot ${wizPlot} (R${wizRep}) berhasil disimpan — ${values.length} nilai karakteristik`);
       if (continueNext) {
         resetWizardStep1();
       } else {
@@ -360,7 +367,9 @@ export default function DataPengamatanPage() {
                   {wizRP && wizEnvOptions.length > 0 && (
                     <div>
                       {wizEnvOptions.length === 1 ? (
-                        <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm flex items-center gap-2">
+                        // Auto-set wizEnv immediately when single env is rendered
+                        <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm flex items-center gap-2"
+                          ref={() => { if (wizEnv !== wizEnvOptions[0].id) setWizEnv(wizEnvOptions[0].id); }}>
                           <span className="text-xs text-green-600 font-medium">Lingkungan:</span>
                           <span className="text-green-800 font-semibold">{wizEnvOptions[0].name ?? wizEnvOptions[0].environment_code}</span>
                         </div>
