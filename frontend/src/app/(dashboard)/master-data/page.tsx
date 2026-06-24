@@ -41,11 +41,13 @@ const genotypeSchema = z.object({
   status: z.enum(["active", "inactive", "archived"]).default("active"),
 });
 
+const toNullableId = (v: unknown) => (v === "" || v == null) ? null : Number(v);
+
 const trialSchema = z.object({
   trial_code: z.string().min(1),
   trial_name: z.string().min(1),
-  // empty string from <select> must become null, not NaN
-  environment_id: z.preprocess(v => (v === "" || v == null) ? null : Number(v), z.number().positive().nullable().optional()),
+  environment_id: z.preprocess(toNullableId, z.number().positive().nullable().optional()),
+  environment_condition_id: z.preprocess(toNullableId, z.number().positive().nullable().optional()),
   planting_date: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
@@ -94,6 +96,7 @@ export default function MasterDataPage() {
   const [activeTab, setActiveTab] = useState<TabType>("genotypes");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChar, setEditingChar] = useState<Characteristic | null>(null);
+  const [editingGenotype, setEditingGenotype] = useState<Genotype | null>(null);
   const [charIsActive, setCharIsActive] = useState(true);
   const [editingEnv, setEditingEnv] = useState<Environment | null>(null);
   const [envFormKey, setEnvFormKey] = useState(0); // remount form on open
@@ -153,8 +156,9 @@ export default function MasterDataPage() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
-  const gCreate = useMutation({ mutationFn: (d: z.infer<typeof genotypeSchema>) => api.post("/v1/genotypes", d), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const gBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/genotypes/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
+  const gCreate = useMutation({ mutationFn: (d: z.infer<typeof genotypeSchema>) => api.post("/v1/genotypes", d), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes","master-data"]}); toast.success("Genotipe ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const gUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: Partial<z.infer<typeof genotypeSchema>>}) => api.put(`/v1/genotypes/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes","master-data"]}); toast.success("Genotipe diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const gBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/genotypes/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["genotypes","master-data"]}); toast.success("Genotipe dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
   const tCreate = useMutation({ mutationFn: (d: z.infer<typeof trialSchema>) => api.post("/v1/trials", d), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const tBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/trials/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
@@ -196,7 +200,19 @@ export default function MasterDataPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); setEditingTrial(null); setEditingEnvCond(null); setEnvCondName(""); setEnvCondDesc(""); };
+  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); setEditingTrial(null); setEditingEnvCond(null); setEditingGenotype(null); setEnvCondName(""); setEnvCondDesc(""); };
+
+  const openEditGenotype = (g: Genotype) => {
+    setEditingGenotype(g);
+    gForm.reset({
+      genotype_code: g.genotype_code,
+      genotype_name: g.genotype_name,
+      category: g.category as z.infer<typeof genotypeSchema>["category"],
+      trial_type: (g as Genotype & { trial_type?: string }).trial_type as z.infer<typeof genotypeSchema>["trial_type"] ?? "normal",
+      status: g.status as z.infer<typeof genotypeSchema>["status"],
+    });
+    setIsModalOpen(true);
+  };
 
   const openEditEnvCond = (c: EnvCondition) => { setEditingEnvCond(c); setEnvCondName(c.name); setEnvCondDesc(c.description ?? ""); setIsModalOpen(true); };
 
@@ -210,6 +226,7 @@ export default function MasterDataPage() {
       trial_code: t.trial_code,
       trial_name: t.trial_name,
       environment_id: envId ?? null,
+      environment_condition_id: (t as Trial & { environment_condition_id?: number }).environment_condition_id ?? null,
       layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
       replications: t.replications,
       status: t.status as z.infer<typeof trialSchema>["status"],
@@ -249,7 +266,12 @@ export default function MasterDataPage() {
     { header: "Nama", accessorKey: "genotype_name" },
     { header: "Kategori", accessorKey: "category", cell: ({getValue}) => <span className="text-xs capitalize">{(getValue() as string).replace("_"," ")}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
-    { header: "Aksi", id: "gAct", cell: ({row}) => <button onClick={() => { if(confirm(`Hapus genotipe "${row.original.genotype_code}"?`)) api.delete(`/v1/genotypes/${row.original.id}`).then(() => { qc.invalidateQueries({queryKey:["genotypes"]}); toast.success("Genotipe dihapus"); }).catch(e => toast.error(getApiErrorMessage(e))); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button> },
+    { header: "Aksi", id: "gAct", cell: ({row}) => (
+      <div className="flex gap-1">
+        <button onClick={() => openEditGenotype(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
+        <button onClick={() => { if(confirm(`Hapus genotipe "${row.original.genotype_code}"?`)) gBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+      </div>
+    )},
   ];
 
   const tCols: ColumnDef<Trial, unknown>[] = [
@@ -322,7 +344,7 @@ export default function MasterDataPage() {
 
   const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","environment_conditions","storage_units"];
   const modalLabel: Record<TabType, string> = {
-    genotypes: "Genotipe", trials: "Research Plan", characteristics: editingChar ? "Edit Karakter" : "Karakter",
+    genotypes: editingGenotype ? "Edit Genotipe" : "Genotipe", trials: "Research Plan", characteristics: editingChar ? "Edit Karakter" : "Karakter",
     environments: editingEnv ? "Edit Lokasi" : "Lokasi", replications: "Ulangan",
     environment_conditions: editingEnvCond ? "Edit Environment" : "Environment",
     storage_units: "Unit Penyimpanan",
@@ -544,9 +566,9 @@ export default function MasterDataPage() {
 
               {/* Genotipe */}
               {activeTab === "genotypes" && (
-                <form onSubmit={gForm.handleSubmit(d => gCreate.mutate(d))} className="space-y-4">
+                <form onSubmit={gForm.handleSubmit(d => editingGenotype ? gUpdate.mutate({id:editingGenotype.id, d}) : gCreate.mutate(d))} className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode Genotipe *</label><input {...gForm.register("genotype_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                    <div><label className="block text-sm font-medium text-gray-700 mb-1">Kode Genotipe *</label><input {...gForm.register("genotype_code")} disabled={!!editingGenotype} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50" /></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Status</label><select {...gForm.register("status")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["active","Aktif"],["inactive","Nonaktif"],["archived","Arsip"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Genotipe *</label><input {...gForm.register("genotype_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
@@ -554,7 +576,7 @@ export default function MasterDataPage() {
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Kategori *</label><select {...gForm.register("category")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["inbred_line","Galur Murni"],["hybrid","Hibrida"],["variety","Varietas"],["population","Populasi"],["germplasm","Plasma Nutfah"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Tipe Trial</label><select {...gForm.register("trial_type")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["normal","Normal"],["drought","Kekeringan"],["shade","Naungan"],["feed","Pakan"],["sweet_corn","Jagung Manis"],["multi","Multi"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                   </div>
-                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={gCreate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{gCreate.isPending?"Menyimpan...":"Tambah Genotipe"}</button></div>
+                  <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={gCreate.isPending||gUpdate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{editingGenotype ? "Simpan Perubahan" : "Tambah Genotipe"}</button></div>
                 </form>
               )}
 
@@ -598,6 +620,22 @@ export default function MasterDataPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">Target Penanaman</label>
                       <input type="date" {...tForm.register("planting_date")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                     </div>
+                  </div>
+                  {/* Environment (treatment condition) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Environment <span className="text-gray-400 font-normal text-xs">(kondisi perlakuan — opsional)</span>
+                    </label>
+                    <select {...tForm.register("environment_condition_id")}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <option value="">-- Pilih Environment --</option>
+                      {envConds.filter(c => c.is_active).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    {envConds.filter(c => c.is_active).length === 0 && (
+                      <p className="text-xs text-amber-600 mt-1">Belum ada Environment. Tambahkan di Master Data → Environment.</p>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>

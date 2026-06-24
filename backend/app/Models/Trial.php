@@ -11,7 +11,7 @@ class Trial extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'trial_code', 'trial_name', 'season_id', 'location_id', 'environment_id', 'trial_type_id',
+        'trial_code', 'trial_name', 'season_id', 'location_id', 'environment_id', 'environment_condition_id', 'trial_type_id',
         'trial_category', 'objective_category', 'target_release_year',
         'objective', 'layout_design', 'replications', 'plot_size_m2',
         'num_genotypes', 'num_locations', 'num_seasons',

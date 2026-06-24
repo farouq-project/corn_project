@@ -36,6 +36,7 @@ class TrialController extends Controller
             'trial_code' => ['required', 'string', 'max:30', 'unique:trials'],
             'trial_name' => ['required', 'string', 'max:255'],
             'environment_id' => ['nullable', 'exists:environments,id'],
+            'environment_condition_id' => ['nullable', 'exists:environment_conditions,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
             'trial_type_id' => ['nullable', 'exists:trial_types,id'],
@@ -95,6 +96,7 @@ class TrialController extends Controller
         $data = $request->validate([
             'trial_name' => ['sometimes', 'string'],
             'environment_id' => ['nullable', 'exists:environments,id'],
+            'environment_condition_id' => ['nullable', 'exists:environment_conditions,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
             'trial_type_id' => ['nullable', 'exists:trial_types,id'],
