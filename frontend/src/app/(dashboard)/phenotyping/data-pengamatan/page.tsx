@@ -2,26 +2,15 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw } from "lucide-react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ObservationGrid } from "@/components/phenotyping/ObservationGrid";
 import { phenotypingService } from "@/services/phenotyping.service";
 import { genotypeService } from "@/services/genotype.service";
+import { cn } from "@/lib/utils";
 import type { Characteristic, Environment, Genotype, ObservationRecord, Trial } from "@/types";
-
-const schema = z.object({
-  plot_no: z.string().min(1, "No Plot wajib diisi").max(20),
-  genotype_id: z.coerce.number({ message: "Genotipe wajib dipilih" }).int().positive(),
-  environment_id: z.coerce.number({ message: "Environment wajib dipilih" }).int().positive(),
-  replication: z.coerce.number().int().min(1, "Replikasi minimal 1"),
-});
-
-type FormData = z.infer<typeof schema>;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -29,15 +18,29 @@ interface ImportBatch { id:number; batch_code:string; original_filename:string; 
 interface StagingRow { id:number; row_number:number; raw_data:Record<string,string>; status:"pending"|"valid"|"warning"|"invalid"; errors?:string[]; warnings?:string[]; }
 
 export default function DataPengamatanPage() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  // ── Page state ──────────────────────────────────────────────────────────────
   const [showImport, setShowImport] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<number|null>(null);
   const [previewFilter, setPreviewFilter] = useState("");
   const [trialFilter, setTrialFilter] = useState<string>("");
   const [environmentFilter, setEnvironmentFilter] = useState<string>("");
-  const [modalTrial, setModalTrial] = useState<string>("");
   const importFileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // ── Wizard state ────────────────────────────────────────────────────────────
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1|2|3>(1);
+  // Step 1 fields
+  const [wizRP, setWizRP] = useState<string>("");           // research plan id
+  const [wizPlot, setWizPlot] = useState("");
+  const [wizGeno, setWizGeno] = useState<string>("");
+  const [wizRep, setWizRep] = useState<number>(1);
+  const [wizEnv, setWizEnv] = useState<number|null>(null);
+  // Step 2: which characteristics are selected
+  const [selectedCharCodes, setSelectedCharCodes] = useState<Set<string>>(new Set());
+  // Step 3: values per characteristic code
+  const [charValues, setCharValues] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
 
   const { data: trialsData } = useQuery({
     queryKey: ["trials-simple"],
@@ -63,25 +66,89 @@ export default function DataPengamatanPage() {
   });
   const allEnvironments: Environment[] = allEnvironmentsData ?? [];
 
-  // Environments for selected trial — fetched via trial_environments junction table
-  const { data: trialEnvsData } = useQuery({
-    queryKey: ["environments", "for-trial", modalTrial],
-    queryFn: () =>
-      api.get<{ data: Environment[] }>("/v1/environments", { params: { per_page: 100, trial_id: modalTrial } }).then((r) => r.data.data),
-    enabled: !!modalTrial,
-    staleTime: 0,
+  // Wizard-derived data
+  const { data: wizTrialEnvsData } = useQuery({
+    queryKey: ["environments", "for-trial", wizRP],
+    queryFn: () => api.get<{ data: Environment[] }>("/v1/environments", { params: { per_page: 100, trial_id: wizRP } }).then(r => r.data.data),
+    enabled: !!wizRP, staleTime: 0,
   });
+  const wizTrialEnvs: Environment[] = wizTrialEnvsData ?? [];
+  const wizEnvOptions: Environment[] = wizRP ? (wizTrialEnvs.length > 0 ? wizTrialEnvs : allEnvironments) : allEnvironments;
 
-  // If the trial has no junction-linked environments, fall back to ALL environments
-  // (this handles trials created before the junction-table fix)
-  const trialEnvs = trialEnvsData ?? [];
-  const modalEnvironments: Environment[] = modalTrial
-    ? (trialEnvs.length > 0 ? trialEnvs : allEnvironments)
-    : allEnvironments;
+  const wizSelectedTrial = useMemo(() => trials.find(t => String(t.id) === wizRP), [trials, wizRP]);
+  const wizMaxReps = wizSelectedTrial?.replications ?? 10;
+  const wizRepOptions = Array.from({ length: wizMaxReps }, (_, i) => i + 1);
 
-  const selectedTrialObj = useMemo(() => trials.find((t) => String(t.id) === modalTrial), [trials, modalTrial]);
-  const maxReplications = selectedTrialObj?.replications ?? 10;
-  const replicationOptions = Array.from({ length: maxReplications }, (_, i) => i + 1);
+  const charsByGroup = useMemo(() => {
+    const grouped: Record<string, Characteristic[]> = {};
+    for (const c of characteristics) {
+      const g = c.group ?? "Lainnya";
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(c);
+    }
+    return grouped;
+  }, [characteristics]);
+
+  const openWizard = () => {
+    setWizRP(trialFilter);
+    setWizPlot(""); setWizGeno(""); setWizRep(1); setWizEnv(null);
+    setSelectedCharCodes(new Set()); setCharValues({});
+    setWizardStep(1);
+    setWizardOpen(true);
+  };
+
+  const resetWizardStep1 = () => {
+    setWizPlot(""); setWizGeno(""); setWizRep(1); setWizEnv(null);
+    setSelectedCharCodes(new Set()); setCharValues({});
+    setWizardStep(1);
+  };
+
+  const goToStep2 = () => {
+    if (!wizPlot.trim()) { toast.error("No Plot wajib diisi"); return; }
+    if (!wizGeno) { toast.error("Genotipe wajib dipilih"); return; }
+    const envId = wizEnv ?? (wizEnvOptions.length === 1 ? wizEnvOptions[0].id : null);
+    if (!envId) { toast.error("Lingkungan wajib dipilih"); return; }
+    setWizEnv(envId);
+    setWizardStep(2);
+  };
+
+  const goToStep3 = () => {
+    if (selectedCharCodes.size === 0) { toast.error("Pilih minimal satu karakteristik"); return; }
+    setWizardStep(3);
+  };
+
+  const submitWizard = async (continueNext: boolean) => {
+    const envId = wizEnv ?? (wizEnvOptions.length === 1 ? wizEnvOptions[0].id : null);
+    if (!envId) { toast.error("Lingkungan tidak ditemukan"); return; }
+
+    const selectedChars = characteristics.filter(c => selectedCharCodes.has(c.code));
+    const values = selectedChars.map(c => ({
+      characteristic_id: c.id,
+      value: charValues[c.code] !== undefined && charValues[c.code] !== "" ? Number(charValues[c.code]) : 0,
+    }));
+
+    setSubmitting(true);
+    try {
+      await phenotypingService.createRecord({
+        plot_no: wizPlot.trim(),
+        genotype_id: Number(wizGeno),
+        environment_id: envId,
+        replication: wizRep,
+        values,
+      });
+      queryClient.invalidateQueries({ queryKey: ["observation-records"] });
+      toast.success(`Plot ${wizPlot} berhasil disimpan`);
+      if (continueNext) {
+        resetWizardStep1();
+      } else {
+        setWizardOpen(false);
+      }
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const { data: recordsData, isLoading } = useQuery({
     queryKey: ["observation-records", environmentFilter],
@@ -92,21 +159,6 @@ export default function DataPengamatanPage() {
   });
   const records: ObservationRecord[] = recordsData?.data ?? [];
 
-  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<FormData>({
-    resolver: zodResolver(schema) as never,
-    defaultValues: { replication: 1 },
-  });
-
-  const createMutation = useMutation({
-    mutationFn: (data: FormData) => phenotypingService.createRecord(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["observation-records"] });
-      toast.success("Baris pengamatan berhasil ditambahkan");
-      setIsModalOpen(false);
-      reset({ replication: 1 });
-    },
-    onError: (error) => toast.error(getApiErrorMessage(error)),
-  });
 
   const updateValueMutation = useMutation({
     mutationFn: ({ record, characteristic, value }: { record: ObservationRecord; characteristic: Characteristic; value: number | null }) =>
@@ -143,15 +195,6 @@ export default function DataPengamatanPage() {
   const STATUS_COLOR: Record<string,string> = { parsed:"bg-yellow-50 text-yellow-700", validated:"bg-green-50 text-green-700", completed:"bg-emerald-50 text-emerald-700", failed:"bg-red-50 text-red-700", rolled_back:"bg-gray-100 text-gray-500" };
   const STATUS_LABEL: Record<string,string> = { uploaded:"Diunggah", parsing:"Parsing...", parsed:"Diparsing", validating:"Memvalidasi...", validated:"Siap Impor", importing:"Mengimpor...", completed:"Selesai", failed:"Gagal", rolled_back:"Di-rollback" };
 
-  const openModal = () => {
-    setModalTrial(trialFilter);
-    // Auto-set environment when RP has exactly one linked environment
-    const autoEnv = trialFilter && trialEnvs.length === 1 ? trialEnvs[0].id : undefined;
-    reset({ replication: 1, ...(autoEnv ? { environment_id: autoEnv } : {}) });
-    setIsModalOpen(true);
-  };
-
-  const onSubmit = (data: FormData) => createMutation.mutate(data);
 
   return (
     <div className="space-y-6 max-w-full mx-auto">
@@ -163,7 +206,7 @@ export default function DataPengamatanPage() {
             <button onClick={() => setShowImport(v => !v)} className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
               <Upload className="w-4 h-4" /> Import
             </button>
-            <button onClick={openModal} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+            <button onClick={openWizard} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
               <Plus className="w-4 h-4" /> Tambah Baris
             </button>
           </div>
@@ -280,97 +323,190 @@ export default function DataPengamatanPage() {
         </div>
       )}
 
-      {/* Add Row Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900">Tambah Baris Pengamatan</h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
+      {/* ── Multi-step wizard ── */}
+      {wizardOpen && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[92vh] flex flex-col">
+            {/* Header with step indicator */}
+            <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+              <div>
+                <h3 className="font-semibold text-gray-900">Tambah Pengamatan</h3>
+                <div className="flex items-center gap-1.5 mt-1">
+                  {[1,2,3].map(s => (
+                    <div key={s} className={cn("h-1.5 rounded-full transition-all", s === wizardStep ? "w-8 bg-green-600" : s < wizardStep ? "w-4 bg-green-300" : "w-4 bg-gray-200")} />
+                  ))}
+                  <span className="text-xs text-gray-400 ml-1">Langkah {wizardStep}/3</span>
+                </div>
+              </div>
+              <button onClick={() => setWizardOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
             </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="p-5 space-y-4">
-              {/* Research Plan selector — drives environment (auto) + replication options */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Research Plan</label>
-                <select
-                  value={modalTrial}
-                  onChange={(e) => {
-                    setModalTrial(e.target.value);
-                    setValue("replication", 1);
-                  }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="">Semua Research Plan</option>
-                  {trials.map((t) => <option key={t.id} value={t.id}>{t.trial_name}</option>)}
-                </select>
-                {selectedTrialObj && (
-                  <p className="text-xs text-green-600 mt-1">{selectedTrialObj.replications} ulangan (R1–R{selectedTrialObj.replications})</p>
-                )}
-              </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
 
-              {/* Environment: auto-detected from RP; show read-only info or multi-select when multiple */}
-              {modalTrial && modalEnvironments.length > 0 && (
-                <div>
-                  {modalEnvironments.length === 1 ? (
-                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm">
-                      <span className="text-green-700 font-medium text-xs">Lingkungan:</span>
-                      <span className="text-green-800 font-semibold">{modalEnvironments[0].name ?? modalEnvironments[0].environment_code}</span>
-                      {/* Hidden input auto-sets the value */}
-                      <input type="hidden" {...register("environment_id")} value={modalEnvironments[0].id} />
-                    </div>
-                  ) : (
+              {/* ── Step 1: Basic info ── */}
+              {wizardStep === 1 && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Research Plan</label>
+                    <select value={wizRP} onChange={e => { setWizRP(e.target.value); setWizEnv(null); setWizRep(1); }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <option value="">-- Pilih Research Plan --</option>
+                      {trials.map(t => <option key={t.id} value={t.id}>{t.trial_name}</option>)}
+                    </select>
+                    {wizSelectedTrial && <p className="text-xs text-green-600 mt-1">{wizSelectedTrial.replications} ulangan tersedia</p>}
+                  </div>
+
+                  {/* Lingkungan — auto from RP or selectable */}
+                  {wizRP && wizEnvOptions.length > 0 && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
-                      <select {...register("environment_id")} defaultValue=""
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                        <option value="" disabled>Pilih lingkungan</option>
-                        {modalEnvironments.map(env => <option key={env.id} value={env.id}>{env.name ?? env.environment_code}</option>)}
-                      </select>
-                      {errors.environment_id && <p className="text-xs text-red-500 mt-1">{errors.environment_id.message}</p>}
+                      {wizEnvOptions.length === 1 ? (
+                        <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm flex items-center gap-2">
+                          <span className="text-xs text-green-600 font-medium">Lingkungan:</span>
+                          <span className="text-green-800 font-semibold">{wizEnvOptions[0].name ?? wizEnvOptions[0].environment_code}</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
+                          <select value={wizEnv ?? ""} onChange={e => setWizEnv(Number(e.target.value) || null)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <option value="">-- Pilih Lingkungan --</option>
+                            {wizEnvOptions.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">No Plot *</label>
+                    <input value={wizPlot} onChange={e => setWizPlot(e.target.value)} placeholder="contoh: 1, A1, B3"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Genotipe *</label>
+                    <select value={wizGeno} onChange={e => setWizGeno(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <option value="">-- Pilih Genotipe --</option>
+                      {genotypes.map(g => <option key={g.id} value={g.id}>{g.genotype_code} — {g.genotype_name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Replikasi (R) *</label>
+                    <select value={wizRep} onChange={e => setWizRep(Number(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                      {wizRepOptions.map(r => <option key={r} value={r}>R{r}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {/* ── Step 2: Select characteristics ── */}
+              {wizardStep === 2 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-gray-700">Pilih Karakteristik yang akan diamati</p>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => setSelectedCharCodes(new Set(characteristics.map(c => c.code)))}
+                        className="text-xs text-green-600 hover:text-green-700">Pilih Semua</button>
+                      <span className="text-gray-300">·</span>
+                      <button type="button" onClick={() => setSelectedCharCodes(new Set())}
+                        className="text-xs text-gray-400 hover:text-gray-600">Batal Semua</button>
+                    </div>
+                  </div>
+                  {Object.entries(charsByGroup).map(([group, chars]) => (
+                    <div key={group} className="space-y-1">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group}</p>
+                      {chars.map(c => (
+                        <label key={c.code} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                          <input type="checkbox" checked={selectedCharCodes.has(c.code)}
+                            onChange={e => {
+                              const next = new Set(selectedCharCodes);
+                              if (e.target.checked) next.add(c.code); else next.delete(c.code);
+                              setSelectedCharCodes(next);
+                            }}
+                            className="accent-green-600 w-4 h-4" />
+                          <span className="flex-1 text-sm text-gray-800">{c.name}</span>
+                          <span className="text-xs text-gray-400">{c.unit ? `(${c.unit})` : c.code}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+                  {selectedCharCodes.size > 0 && (
+                    <p className="text-xs text-green-600 font-medium">{selectedCharCodes.size} karakteristik dipilih</p>
                   )}
                 </div>
               )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">No Plot</label>
-                <input {...register("plot_no")} placeholder="contoh: 1, A1, dst"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                {errors.plot_no && <p className="text-xs text-red-500 mt-1">{errors.plot_no.message}</p>}
-              </div>
+              {/* ── Step 3: Input values ── */}
+              {wizardStep === 3 && (
+                <div className="space-y-3">
+                  <div className="px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-0.5">
+                    <p>Plot: <strong className="text-gray-800">{wizPlot}</strong> · Genotipe: <strong className="text-gray-800">{genotypes.find(g=>String(g.id)===wizGeno)?.genotype_code}</strong> · R{wizRep}</p>
+                    <p className="text-[11px] text-gray-400">Kosongkan jika tidak diamati → akan disimpan sebagai 0</p>
+                  </div>
+                  {Object.entries(charsByGroup).map(([group, chars]) => {
+                    const selectedInGroup = chars.filter(c => selectedCharCodes.has(c.code));
+                    if (selectedInGroup.length === 0) return null;
+                    return (
+                      <div key={group} className="space-y-2">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group}</p>
+                        {selectedInGroup.map(c => (
+                          <div key={c.code} className="flex items-center gap-3">
+                            <label className="flex-1 text-sm text-gray-700 min-w-0">
+                              {c.name} {c.unit && <span className="text-xs text-gray-400">({c.unit})</span>}
+                            </label>
+                            <input
+                              type="number" step="any"
+                              value={charValues[c.code] ?? ""}
+                              onChange={e => setCharValues(v => ({...v, [c.code]: e.target.value}))}
+                              placeholder="0"
+                              className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Genotipe</label>
-                <select {...register("genotype_id")} defaultValue=""
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="" disabled>Pilih genotipe</option>
-                  {genotypes.map((g) => <option key={g.id} value={g.id}>{g.genotype_code} — {g.genotype_name}</option>)}
-                </select>
-                {errors.genotype_id && <p className="text-xs text-red-500 mt-1">{errors.genotype_id.message}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Replikasi (R)</label>
-                {selectedTrialObj ? (
-                  <select {...register("replication")} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                    {replicationOptions.map((r) => <option key={r} value={r}>R{r}</option>)}
-                  </select>
-                ) : (
-                  <input type="number" min={1} {...register("replication")}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  />
-                )}
-                {errors.replication && <p className="text-xs text-red-500 mt-1">{errors.replication.message}</p>}
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition">Batal</button>
-                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition disabled:opacity-50">Simpan</button>
-              </div>
-            </form>
+            {/* Footer actions */}
+            <div className="px-6 py-4 border-t flex-shrink-0 flex gap-2">
+              {wizardStep > 1 && (
+                <button type="button" onClick={() => setWizardStep(s => (s - 1) as 1|2|3)}
+                  className="flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition">
+                  <ChevronLeft className="w-4 h-4" /> Kembali
+                </button>
+              )}
+              <div className="flex-1" />
+              {wizardStep === 1 && (
+                <button type="button" onClick={goToStep2}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition">
+                  Lanjut <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+              {wizardStep === 2 && (
+                <button type="button" onClick={goToStep3}
+                  className="flex items-center gap-1.5 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition">
+                  Lanjut <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+              {wizardStep === 3 && (
+                <>
+                  <button type="button" onClick={() => submitWizard(true)} disabled={submitting}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-green-600 text-green-700 rounded-lg text-sm font-medium hover:bg-green-50 transition disabled:opacity-50">
+                    <Save className="w-4 h-4" /> Simpan &amp; Lanjut
+                  </button>
+                  <button type="button" onClick={() => submitWizard(false)} disabled={submitting}
+                    className="flex items-center gap-1.5 px-5 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition disabled:opacity-50">
+                    {submitting ? "Menyimpan..." : "Submit"}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

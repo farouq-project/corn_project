@@ -120,7 +120,10 @@ class PhenotypingImportService
                 // Strip unit in parentheses: "TT (cm)" → "TT"
                 $code = strtoupper(trim(preg_replace('/\s*\(.*\)/', '', $colKey)));
                 if ($code === '') continue;
-                $norm['values'][$code] = $this->normalizer->normalizeNumericValue($cellVal === '' ? null : $cellVal);
+                // Empty cell → 0 (store as zero, not skip)
+                $norm['values'][$code] = ($cellVal === '' || $cellVal === null)
+                    ? 0.0
+                    : $this->normalizer->normalizeNumericValue($cellVal);
             }
 
             $result = $this->validator->validateObservationRow($norm, $raw, $row->row_number);
@@ -234,11 +237,11 @@ class PhenotypingImportService
                     ]
                 );
 
-                // Upsert characteristic values — skip null/empty cells to preserve existing data
+                // Upsert all characteristic values (empty cells stored as 0)
                 foreach ($norm['values'] ?? [] as $code => $value) {
                     $char = $characteristicCache[strtoupper($code)] ?? null;
                     if (!$char) continue;
-                    if ($value === null) continue; // empty cell → keep existing value
+                    // value is 0.0 for empty cells (never null here)
 
                     ObservationValue::updateOrCreate(
                         [
