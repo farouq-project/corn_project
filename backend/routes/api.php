@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\V1\StorageController;
 use App\Http\Controllers\Api\V1\TrialController;
 use App\Http\Controllers\Api\V1\TrialPlotController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\EnvironmentConditionController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\StorageMonitorController;
 use App\Http\Controllers\Api\V1\VarietyCandidateController;
@@ -45,6 +46,12 @@ Route::prefix('v1')->group(function () {
 
         // General file upload (receipts, activity photos, etc.)
         Route::post('media/upload', [MediaController::class, 'upload']);
+
+        // Environment conditions (treatment types: Normal, Shading, Drought, etc.)
+        Route::get('environment-conditions', [EnvironmentConditionController::class, 'index']);
+        Route::post('environment-conditions', [EnvironmentConditionController::class, 'store']);
+        Route::put('environment-conditions/{environmentCondition}', [EnvironmentConditionController::class, 'update']);
+        Route::delete('environment-conditions/{environmentCondition}', [EnvironmentConditionController::class, 'destroy']);
 
         // Storage Monitor
         Route::get('storage-monitor', [StorageMonitorController::class, 'index']);

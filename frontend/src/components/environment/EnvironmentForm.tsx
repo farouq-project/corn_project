@@ -288,7 +288,7 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
         </button>
         <button type="submit" disabled={isSubmitting}
           className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
-          {isSubmitting ? "Menyimpan..." : editMode ? "Simpan Perubahan" : "Buat Lingkungan"}
+          {isSubmitting ? "Menyimpan..." : editMode ? "Simpan Perubahan" : "Buat Lokasi"}
         </button>
       </div>
     </form>

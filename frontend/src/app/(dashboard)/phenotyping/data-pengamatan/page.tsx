@@ -108,7 +108,7 @@ export default function DataPengamatanPage() {
     if (!wizPlot.trim()) { toast.error("No Plot wajib diisi"); return; }
     if (!wizGeno) { toast.error("Genotipe wajib dipilih"); return; }
     const envId = wizEnv ?? (wizEnvOptions.length === 1 ? wizEnvOptions[0].id : null);
-    if (!envId) { toast.error("Lingkungan wajib dipilih"); return; }
+    if (!envId) { toast.error("Lokasi wajib dipilih"); return; }
     setWizEnv(envId);
     setWizardStep(2);
   };
@@ -126,7 +126,7 @@ export default function DataPengamatanPage() {
     // Pre-submit validation
     if (!wizPlot.trim()) { toast.error("No Plot wajib diisi"); return; }
     if (!genoId || isNaN(genoId)) { toast.error("Genotipe wajib dipilih"); return; }
-    if (!resolvedEnv) { toast.error("Lingkungan tidak ditemukan — pastikan Research Plan sudah terhubung dengan Lingkungan"); return; }
+    if (!resolvedEnv) { toast.error("Lokasi tidak ditemukan — pastikan Research Plan sudah terhubung dengan Lokasi"); return; }
     if (selectedCharCodes.size === 0) { toast.error("Pilih minimal satu karakteristik di langkah sebelumnya"); return; }
 
     const selectedChars = characteristics.filter(c => selectedCharCodes.has(c.code));
@@ -370,22 +370,22 @@ export default function DataPengamatanPage() {
                     {wizSelectedTrial && <p className="text-xs text-green-600 mt-1">{wizSelectedTrial.replications} ulangan tersedia</p>}
                   </div>
 
-                  {/* Lingkungan — auto from RP or selectable */}
+                  {/* Lokasi — auto from RP or selectable */}
                   {wizRP && wizEnvOptions.length > 0 && (
                     <div>
                       {wizEnvOptions.length === 1 ? (
                         // Auto-set wizEnv immediately when single env is rendered
                         <div className="px-3 py-2 bg-green-50 border border-green-100 rounded-lg text-sm flex items-center gap-2"
                           ref={() => { if (wizEnv !== wizEnvOptions[0].id) setWizEnv(wizEnvOptions[0].id); }}>
-                          <span className="text-xs text-green-600 font-medium">Lingkungan:</span>
+                          <span className="text-xs text-green-600 font-medium">Lokasi:</span>
                           <span className="text-green-800 font-semibold">{wizEnvOptions[0].name ?? wizEnvOptions[0].environment_code}</span>
                         </div>
                       ) : (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi</label>
                           <select value={wizEnv ?? ""} onChange={e => setWizEnv(Number(e.target.value) || null)}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                            <option value="">-- Pilih Lingkungan --</option>
+                            <option value="">-- Pilih Lokasi --</option>
                             {wizEnvOptions.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
                           </select>
                         </div>

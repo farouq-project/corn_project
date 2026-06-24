@@ -171,8 +171,8 @@ export default function EnvironmentsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <PageHeader
-        title="Lingkungan Percobaan"
-        description="Kombinasi Lokasi × Musim dengan data lingkungan terintegrasi"
+        title="Lokasi Percobaan"
+        description="Kebun percobaan dan lokasi penelitian"
         actions={
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg border border-gray-200 overflow-hidden">

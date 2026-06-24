@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Map, Calendar, Package, X, Dna, BookOpen,
   Microscope, MapPin, Repeat2, Edit2, Upload, Download,
-  ToggleLeft, ToggleRight, ChevronDown, ChevronRight,
+  ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Leaf,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -24,8 +24,10 @@ import { formatDate, cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
-type TabType = "genotypes" | "trials" | "characteristics" | "environments" | "replications"
+type TabType = "genotypes" | "trials" | "characteristics" | "environments" | "environment_conditions" | "replications"
              | "storage_units";
+
+interface EnvCondition { id: number; name: string; description?: string; is_active: boolean; }
 
 const toN = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
 
@@ -106,6 +108,12 @@ export default function MasterDataPage() {
   const [repEditVal, setRepEditVal] = useState(3);
   const charImportRef = useRef<HTMLInputElement>(null);
   const genoImportRef = useRef<HTMLInputElement>(null);
+  const [editingEnvCond, setEditingEnvCond] = useState<EnvCondition | null>(null);
+  const [envCondName, setEnvCondName] = useState("");
+  const [envCondDesc, setEnvCondDesc] = useState("");
+  // Research Plan Lokasi autocomplete
+  const [lokasiSearch, setLokasiSearch] = useState("");
+  const [lokasiDropOpen, setLokasiDropOpen] = useState(false);
   const qc = useQueryClient();
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -132,6 +140,8 @@ export default function MasterDataPage() {
   const { data: storageUnits, isLoading: suLoading } = useQuery({ queryKey: ["storage-units-all"], queryFn: () => api.get("/v1/storage/units?per_page=50").then(r => r.data as {data:StorageUnit[]}) });
   const { data: seasonsList } = useQuery({ queryKey: ["seasons-simple"], queryFn: () => api.get("/v1/seasons?all=true").then(r => r.data as {id:number;season_name:string}[]) });
   const { data: locationsList } = useQuery({ queryKey: ["locations-simple"], queryFn: () => api.get("/v1/locations?all=true").then(r => r.data as {id:number;field_name:string}[]) });
+  const { data: envCondsData, isLoading: ecLoading } = useQuery({ queryKey: ["environment-conditions"], queryFn: () => api.get<EnvCondition[]>("/v1/environment-conditions").then(r => r.data), staleTime: 0 });
+  const envConds: EnvCondition[] = envCondsData ?? [];
 
   // ── Forms ─────────────────────────────────────────────────────────────────
 
@@ -153,9 +163,9 @@ export default function MasterDataPage() {
   const cUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: Partial<z.infer<typeof charSchema>>}) => api.put(`/v1/phenotyping/characteristics/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const cBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/phenotyping/characteristics/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); toast.success("Karakter dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
-  const envCreate = useMutation({ mutationFn: (d: EnvironmentFormData) => api.post("/v1/environments", d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const envUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: EnvironmentFormData}) => api.put(`/v1/environments/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
-  const envBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/environments/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lingkungan dihapus"); }, onError: () => toast.error("Sebagian lingkungan gagal dihapus") });
+  const envCreate = useMutation({ mutationFn: (d: EnvironmentFormData) => api.post("/v1/environments", d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lokasi ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const envUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: EnvironmentFormData}) => api.put(`/v1/environments/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lokasi diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const envBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/environments/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["environments"]}); qc.invalidateQueries({queryKey:["dashboard"]}); toast.success("Lokasi dihapus"); }, onError: () => toast.error("Sebagian lokasi gagal dihapus") });
 
   const tUpdate = useMutation({ mutationFn: ({id,d}: {id:number; d: z.infer<typeof trialSchema>}) => api.put(`/v1/trials/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["trials"]}); toast.success("Research Plan diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
 
@@ -174,6 +184,10 @@ export default function MasterDataPage() {
   const suCreate = useMutation({ mutationFn: (d: z.infer<typeof storageSchema>) => api.post("/v1/storage/units", d), onSuccess: () => { qc.invalidateQueries({queryKey:["storage-units-all"]}); toast.success("Unit ditambahkan"); closeModal(); suForm.reset(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const suBulkDel = useMutation({ mutationFn: (ids: number[]) => Promise.all(ids.map(id => api.delete(`/v1/storage/units/${id}`))), onSuccess: () => { qc.invalidateQueries({queryKey:["storage-units-all"]}); toast.success("Unit dihapus"); }, onError: () => toast.error("Sebagian gagal dihapus") });
 
+  const ecCreate = useMutation({ mutationFn: (d: {name:string;description?:string}) => api.post("/v1/environment-conditions", d), onSuccess: () => { qc.invalidateQueries({queryKey:["environment-conditions"]}); toast.success("Environment ditambahkan"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const ecUpdate = useMutation({ mutationFn: ({id,d}: {id:number;d:{name:string;description?:string}}) => api.put(`/v1/environment-conditions/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environment-conditions"]}); toast.success("Environment diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const ecDelete = useMutation({ mutationFn: (id: number) => api.delete(`/v1/environment-conditions/${id}`), onSuccess: () => { qc.invalidateQueries({queryKey:["environment-conditions"]}); toast.success("Environment dihapus"); }, onError: e => toast.error(getApiErrorMessage(e)) });
+
   const charImportMutation = useMutation({
     mutationFn: (file: File) => { const fd = new FormData(); fd.append("file", file); return api.post("/v1/phenotyping/characteristics/import", fd, {headers:{"Content-Type":"multipart/form-data"}}); },
     onSuccess: res => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); setCharImportResult(res.data as typeof charImportResult); toast.success((res.data as {message?:string})?.message ?? "Import selesai"); },
@@ -182,14 +196,20 @@ export default function MasterDataPage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); setEditingTrial(null); };
+  const closeModal = () => { setIsModalOpen(false); setEditingChar(null); setEditingEnv(null); setEditingTrial(null); setEditingEnvCond(null); setEnvCondName(""); setEnvCondDesc(""); };
+
+  const openEditEnvCond = (c: EnvCondition) => { setEditingEnvCond(c); setEnvCondName(c.name); setEnvCondDesc(c.description ?? ""); setIsModalOpen(true); };
 
   const openEditTrial = (t: Trial) => {
     setEditingTrial(t);
+    const envId = (t as Trial & { environment_id?: number }).environment_id;
+    const matchedEnv = envs.find(e => e.id === envId);
+    if (matchedEnv) setLokasiSearch(matchedEnv.name ?? matchedEnv.environment_code ?? "");
+    else setLokasiSearch("");
     tForm.reset({
       trial_code: t.trial_code,
       trial_name: t.trial_name,
-      environment_id: (t as Trial & { environment_id?: number }).environment_id ?? null,
+      environment_id: envId ?? null,
       layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
       replications: t.replications,
       status: t.status as z.infer<typeof trialSchema>["status"],
@@ -216,8 +236,9 @@ export default function MasterDataPage() {
     { id: "genotypes",      label: "Genotipe",        icon: Dna,        count: genotypes.length },
     { id: "trials",         label: "Research Plan",    icon: BookOpen,   count: trials.length },
     { id: "characteristics",label: "Pengamatan",       icon: Microscope, count: chars.length },
-    { id: "environments",   label: "Lingkungan",       icon: MapPin,     count: envs.length },
+    { id: "environments",   label: "Lokasi",            icon: MapPin,     count: envs.length },
     { id: "replications",   label: "Ulangan (R)",      icon: Repeat2,    count: trials.length },
+    { id: "environment_conditions", label: "Environment", icon: Leaf,   count: envConds.length },
     { id: "storage_units",  label: "Unit Penyimpanan", icon: Package,    count: (storageUnits as {data:StorageUnit[]})?.data?.length ?? 0 },
   ];
 
@@ -276,7 +297,7 @@ export default function MasterDataPage() {
     { header: "Aksi", id: "eActions", cell: ({row}) => (
       <div className="flex gap-1">
         <button onClick={() => openEnvEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
-        <button onClick={() => { if(confirm(`Hapus lingkungan "${row.original.environment_code}"?`)) envBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+        <button onClick={() => { if(confirm(`Hapus lokasi "${row.original.environment_code}"?`)) envBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
       </div>
     )},
   ];
@@ -299,10 +320,11 @@ export default function MasterDataPage() {
     { header: "Aksi", id: "suAct", cell: ({row}) => <button onClick={() => { if(confirm(`Hapus unit "${row.original.unit_name}"?`)) suBulkDel.mutate([row.original.id]); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button> },
   ];
 
-  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","storage_units"];
+  const tabsShowingModal: TabType[] = ["genotypes","trials","characteristics","environments","environment_conditions","storage_units"];
   const modalLabel: Record<TabType, string> = {
     genotypes: "Genotipe", trials: "Research Plan", characteristics: editingChar ? "Edit Karakter" : "Karakter",
-    environments: editingEnv ? "Edit Lingkungan" : "Lingkungan", replications: "Ulangan",
+    environments: editingEnv ? "Edit Lokasi" : "Lokasi", replications: "Ulangan",
+    environment_conditions: editingEnvCond ? "Edit Environment" : "Environment",
     storage_units: "Unit Penyimpanan",
   };
 
@@ -433,7 +455,7 @@ export default function MasterDataPage() {
           {/* ── Pengamatan / Karakteristik ── */}
           {activeTab === "characteristics" && <DataTable data={chars} columns={cCols} isLoading={cLoading} searchPlaceholder="Cari kode atau nama karakter..." emptyMessage="Belum ada karakter" getRowId={r => String(r.id)} onBulkDelete={rows => cBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={cBulkDel.isPending} />}
 
-          {/* ── Lingkungan ── */}
+          {/* ── Lokasi ── */}
           {activeTab === "environments" && <DataTable data={envs} columns={envCols} isLoading={eLoading} searchPlaceholder="Cari environment..." emptyMessage="Belum ada environment" getRowId={r => String(r.id)} onBulkDelete={rows => envBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={envBulkDel.isPending} />}
 
           {/* ── Ulangan ── */}
@@ -485,6 +507,27 @@ export default function MasterDataPage() {
           )}
 
           {/* ── Unit Penyimpanan ── */}
+          {activeTab === "environment_conditions" && (
+            <DataTable
+              data={envConds}
+              columns={[
+                { header: "Nama", accessorKey: "name", cell: ({getValue}) => <span className="font-semibold text-gray-800">{getValue() as string}</span> },
+                { header: "Deskripsi", accessorKey: "description", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
+                { header: "Status", accessorKey: "is_active", cell: ({getValue}) => <StatusBadge status={getValue() ? "active" : "inactive"} /> },
+                { header: "Aksi", id: "ecAct", cell: ({row}) => (
+                  <div className="flex gap-1">
+                    <button onClick={() => openEditEnvCond(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
+                    <button onClick={() => { if(confirm(`Hapus "${row.original.name}"?`)) ecDelete.mutate(row.original.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><X className="w-3.5 h-3.5"/></button>
+                  </div>
+                )},
+              ]}
+              isLoading={ecLoading}
+              searchPlaceholder="Cari environment..."
+              emptyMessage="Belum ada environment. Klik Tambah untuk menambahkan (contoh: Normal, Shading, Drought)."
+              getRowId={r => String(r.id)}
+            />
+          )}
+
           {activeTab === "storage_units" && <DataTable data={(storageUnits as {data:StorageUnit[]})?.data ?? []} columns={suCols} isLoading={suLoading} searchPlaceholder="Cari unit penyimpanan..." emptyMessage="Belum ada unit" getRowId={r => String(r.id)} onBulkDelete={rows => suBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={suBulkDel.isPending} />}
         </div>
       </div>
@@ -524,12 +567,32 @@ export default function MasterDataPage() {
                   </div>
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Lingkungan <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
-                      <select {...tForm.register("environment_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                        <option value="">-- Pilih Lingkungan --</option>
-                        {envs.map(e => <option key={e.id} value={e.id}>{e.name ?? e.environment_code}</option>)}
-                      </select>
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                      <input
+                        value={lokasiSearch}
+                        onChange={e => { setLokasiSearch(e.target.value); setLokasiDropOpen(true); tForm.setValue("environment_id", null); }}
+                        onFocus={() => setLokasiDropOpen(true)}
+                        onBlur={() => setTimeout(() => setLokasiDropOpen(false), 150)}
+                        placeholder="Ketik untuk mencari lokasi..."
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        autoComplete="off"
+                      />
+                      {lokasiDropOpen && (
+                        <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1">
+                          {envs.filter(e => !lokasiSearch || (e.name ?? e.environment_code ?? "").toLowerCase().includes(lokasiSearch.toLowerCase())).length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-gray-400">Tidak ada lokasi ditemukan</div>
+                          ) : envs.filter(e => !lokasiSearch || (e.name ?? e.environment_code ?? "").toLowerCase().includes(lokasiSearch.toLowerCase())).map(e => (
+                            <button key={e.id} type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 hover:text-green-700 transition"
+                              onMouseDown={() => { tForm.setValue("environment_id", e.id); setLokasiSearch(e.name ?? e.environment_code ?? ""); setLokasiDropOpen(false); }}>
+                              <span className="font-medium">{e.name ?? e.environment_code}</span>
+                              {e.environment_code && e.name && <span className="text-xs text-gray-400 ml-1">({e.environment_code})</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <input type="hidden" {...tForm.register("environment_id")} />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Target Penanaman</label>
@@ -563,7 +626,7 @@ export default function MasterDataPage() {
                 </form>
               )}
 
-              {/* Lingkungan — uses Google Maps form */}
+              {/* Lokasi — uses Google Maps form */}
               {activeTab === "environments" && (
                 <EnvironmentForm
                   key={envFormKey}
@@ -586,6 +649,40 @@ export default function MasterDataPage() {
                 />
               )}
 
+
+              {/* Environment */}
+              {activeTab === "environment_conditions" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Nama Environment *</label>
+                    <input value={envCondName} onChange={e => setEnvCondName(e.target.value)}
+                      placeholder="contoh: Normal, Shading, Drought, Flooding"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      list="env-cond-suggestions" />
+                    <datalist id="env-cond-suggestions">
+                      {["Normal","Shading","Drought","Flooding","Salt Stress","Heat Stress","Cold Stress"].map(n => <option key={n} value={n}/>)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                    <textarea value={envCondDesc} onChange={e => setEnvCondDesc(e.target.value)} rows={2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                      placeholder="Kondisi perlakuan..." />
+                  </div>
+                  <div className="flex gap-3 pt-2 border-t">
+                    <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button>
+                    <button type="button" disabled={ecCreate.isPending||ecUpdate.isPending}
+                      onClick={() => {
+                        if (!envCondName.trim()) { toast.error("Nama wajib diisi"); return; }
+                        if (editingEnvCond) ecUpdate.mutate({id:editingEnvCond.id, d:{name:envCondName.trim(),description:envCondDesc||undefined}});
+                        else ecCreate.mutate({name:envCondName.trim(),description:envCondDesc||undefined});
+                      }}
+                      className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">
+                      {editingEnvCond ? "Simpan Perubahan" : "Tambah Environment"}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Unit Penyimpanan */}
               {activeTab === "storage_units" && (
