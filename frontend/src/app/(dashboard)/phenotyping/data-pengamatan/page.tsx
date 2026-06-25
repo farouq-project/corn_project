@@ -2,8 +2,9 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save, Eye, Trash2 } from "lucide-react";
+import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save, Eye, Trash2, History, Undo2, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -32,6 +33,12 @@ export default function DataPengamatanPage() {
   const [dismissedBatchIds, setDismissedBatchIds] = useState<Set<number>>(new Set());
   const [viewingRecord, setViewingRecord] = useState<ObservationRecord | null>(null);
   const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [historyRecord, setHistoryRecord] = useState<ObservationRecord | null>(null);
+  // Multi-sample state per characteristic in wizard step 3
+  const [charSamples, setCharSamples] = useState<Record<string, string[]>>({});
+  const { user } = useAuthStore();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars — charValues replaced by charSamples
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1|2|3>(1);
   // Step 1 fields
@@ -43,7 +50,6 @@ export default function DataPengamatanPage() {
   // Step 2: which characteristics are selected
   const [selectedCharCodes, setSelectedCharCodes] = useState<Set<string>>(new Set());
   // Step 3: values per characteristic code
-  const [charValues, setCharValues] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const { data: trialsData } = useQuery({
@@ -96,14 +102,14 @@ export default function DataPengamatanPage() {
   const openWizard = () => {
     setWizRP(trialFilter);
     setWizPlot(""); setWizGeno(""); setWizRep(1); setWizEnv(null);
-    setSelectedCharCodes(new Set()); setCharValues({});
+    setSelectedCharCodes(new Set()); setCharSamples({});
     setWizardStep(1);
     setWizardOpen(true);
   };
 
   const resetWizardStep1 = () => {
     setWizPlot(""); setWizGeno(""); setWizRep(1); setWizEnv(null);
-    setSelectedCharCodes(new Set()); setCharValues({});
+    setSelectedCharCodes(new Set()); setCharSamples({});
     setWizardStep(1);
   };
 
@@ -133,10 +139,14 @@ export default function DataPengamatanPage() {
     if (selectedCharCodes.size === 0) { toast.error("Pilih minimal satu karakteristik di langkah sebelumnya"); return; }
 
     const selectedChars = characteristics.filter(c => selectedCharCodes.has(c.code));
-    const values = selectedChars.map(c => ({
-      characteristic_id: c.id,
-      value: charValues[c.code] !== undefined && charValues[c.code] !== "" ? Number(charValues[c.code]) : 0,
-    }));
+    // Build values array including multi-sample entries
+    const values: { characteristic_id: number; value: number; sample_number: number }[] = [];
+    for (const c of selectedChars) {
+      const samples = charSamples[c.code] ?? [""];
+      samples.forEach((v, i) => {
+        values.push({ characteristic_id: c.id, value: v !== "" ? Number(v) : 0, sample_number: i + 1 });
+      });
+    }
 
     setSubmitting(true);
     try {
@@ -170,6 +180,14 @@ export default function DataPengamatanPage() {
   });
   const records: ObservationRecord[] = recordsData?.data ?? [];
 
+  const { data: deletedData } = useQuery({
+    queryKey: ["observation-records-deleted"],
+    queryFn: () => api.get<{data: ObservationRecord[]}>("/v1/phenotyping/records/deleted", { params: { per_page: 100 } }).then(r => r.data.data),
+    enabled: showDeleted,
+    staleTime: 0,
+  });
+  const deletedRecords: ObservationRecord[] = deletedData ?? [];
+
 
   const updateValueMutation = useMutation({
     mutationFn: ({ record, characteristic, value }: { record: ObservationRecord; characteristic: Characteristic; value: number | null }) =>
@@ -202,7 +220,13 @@ export default function DataPengamatanPage() {
   const validateMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/validate`), onSuccess: () => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["import-preview"]}); toast.success("Validasi selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const deleteRecordMutation = useMutation({
     mutationFn: (id: number) => phenotypingService.deleteRecord(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); toast.success("Baris pengamatan dihapus"); setDeletingRecordId(null); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); queryClient.invalidateQueries({ queryKey: ["observation-records-deleted"] }); toast.success("Baris pengamatan dihapus (bisa dipulihkan dalam 30 hari)"); setDeletingRecordId(null); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/v1/phenotyping/records/${id}/restore`),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); queryClient.invalidateQueries({ queryKey: ["observation-records-deleted"] }); toast.success("Baris berhasil dipulihkan"); },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
@@ -231,7 +255,10 @@ export default function DataPengamatanPage() {
         title="Data Pengamatan"
         description="Entri data pengamatan fenotipe per plot/replikasi, mengikuti format spreadsheet lapangan"
         actions={
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => setShowDeleted(v => !v)} className={`flex items-center gap-2 px-3 py-2 border text-sm font-medium rounded-lg transition ${showDeleted ? "border-red-300 text-red-700 bg-red-50" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+              <Undo2 className="w-4 h-4" /> Sampah
+            </button>
             <button onClick={() => setShowImport(v => !v)} className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
               <Upload className="w-4 h-4" /> Import
             </button>
@@ -366,7 +393,7 @@ export default function DataPengamatanPage() {
             isLoading={isLoading}
             onCellChange={(record, characteristic, value) => updateValueMutation.mutate({ record, characteristic, value })}
             onViewRow={(r) => setViewingRecord(r)}
-            onDeleteRow={(r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}?`)) deleteRecordMutation.mutate(r.id); }}
+            onDeleteRow={(r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.id); }}
           />
         </div>
       )}
@@ -489,12 +516,13 @@ export default function DataPengamatanPage() {
                 </div>
               )}
 
-              {/* ── Step 3: Input values ── */}
+              {/* ── Step 3: Input values (with multi-sample support) ── */}
               {wizardStep === 3 && (
                 <div className="space-y-3">
                   <div className="px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-500 space-y-0.5">
                     <p>Plot: <strong className="text-gray-800">{wizPlot}</strong> · Genotipe: <strong className="text-gray-800">{genotypes.find(g=>String(g.id)===wizGeno)?.genotype_code}</strong> · R{wizRep}</p>
-                    <p className="text-[11px] text-gray-400">Kosongkan jika tidak diamati → akan disimpan sebagai 0</p>
+                    <p className="text-xs text-green-600 font-medium">Staff: {user?.name}</p>
+                    <p className="text-[11px] text-gray-400">Kosongkan jika tidak diamati → 0. Klik "+ Sampel" untuk mengukur beberapa sampel.</p>
                   </div>
                   {Object.entries(charsByGroup).map(([group, chars]) => {
                     const selectedInGroup = chars.filter(c => selectedCharCodes.has(c.code));
@@ -502,20 +530,38 @@ export default function DataPengamatanPage() {
                     return (
                       <div key={group} className="space-y-2">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group}</p>
-                        {selectedInGroup.map(c => (
-                          <div key={c.code} className="flex items-center gap-3">
-                            <label className="flex-1 text-sm text-gray-700 min-w-0">
-                              {c.name} {c.unit && <span className="text-xs text-gray-400">({c.unit})</span>}
-                            </label>
-                            <input
-                              type="number" step="any"
-                              value={charValues[c.code] ?? ""}
-                              onChange={e => setCharValues(v => ({...v, [c.code]: e.target.value}))}
-                              placeholder="0"
-                              className="w-28 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
-                            />
-                          </div>
-                        ))}
+                        {selectedInGroup.map(c => {
+                          const samples = charSamples[c.code] ?? [""];
+                          return (
+                            <div key={c.code} className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <label className="flex-1 text-sm text-gray-700">
+                                  {c.name} {c.unit && <span className="text-xs text-gray-400">({c.unit})</span>}
+                                </label>
+                                <button type="button"
+                                  onClick={() => setCharSamples(s => ({...s, [c.code]: [...(s[c.code] ?? [""]), ""]}))}
+                                  className="text-xs text-green-600 hover:text-green-700 px-1.5 py-0.5 rounded hover:bg-green-50 flex-shrink-0">
+                                  + Sampel
+                                </button>
+                              </div>
+                              {samples.map((val, si) => (
+                                <div key={si} className="flex items-center gap-2 pl-2">
+                                  {samples.length > 1 && <span className="text-xs text-gray-400 w-14 flex-shrink-0">Sampel {si+1}</span>}
+                                  <input type="number" step="any" value={val}
+                                    onChange={e => setCharSamples(s => ({...s, [c.code]: (s[c.code] ?? [""]).map((v,i) => i===si ? e.target.value : v)}))}
+                                    placeholder="0"
+                                    className="w-24 px-2 py-1.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-green-500"
+                                  />
+                                  {samples.length > 1 && (
+                                    <button type="button"
+                                      onClick={() => setCharSamples(s => ({...s, [c.code]: (s[c.code]??[""]).filter((_,i)=>i!==si)}))}
+                                      className="text-gray-300 hover:text-red-400"><X className="w-3.5 h-3.5"/></button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}
@@ -558,6 +604,35 @@ export default function DataPengamatanPage() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Deleted Records (Sampah) Panel ── */}
+      {showDeleted && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-red-700"><Undo2 className="w-4 h-4"/> Sampah — Bisa dipulihkan hingga 30 hari</div>
+            <button onClick={() => setShowDeleted(false)}><X className="w-4 h-4 text-red-400"/></button>
+          </div>
+          {deletedRecords.length === 0 ? (
+            <p className="text-xs text-red-400">Tidak ada data yang dihapus dalam 30 hari terakhir.</p>
+          ) : (
+            <div className="space-y-2">
+              {deletedRecords.map(r => (
+                <div key={r.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-red-100">
+                  <div className="flex-1 min-w-0 text-xs">
+                    <span className="font-medium text-gray-800">Plot {r.plot_no}</span>
+                    <span className="text-gray-400 ml-2">· {r.genotype?.genotype_code} · R{r.replication}</span>
+                    <span className="text-red-400 ml-2">· Dihapus {formatDate((r as ObservationRecord & {deleted_at?:string}).deleted_at ?? "")}</span>
+                  </div>
+                  <button onClick={() => restoreMutation.mutate(r.id)} disabled={restoreMutation.isPending}
+                    className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50 flex-shrink-0">
+                    Pulihkan
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -611,12 +686,57 @@ export default function DataPengamatanPage() {
               )}
               <div className="flex gap-2 pt-2 border-t">
                 <button onClick={() => setViewingRecord(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
+                <button onClick={() => { setHistoryRecord(viewingRecord); setViewingRecord(null); }} className="px-4 py-2 border border-blue-200 text-blue-600 rounded-lg text-sm hover:bg-blue-50 flex items-center gap-1"><History className="w-4 h-4"/>Riwayat</button>
                 <button onClick={() => { if(confirm(`Hapus baris Plot ${viewingRecord.plot_no} R${viewingRecord.replication}?`)) { deleteRecordMutation.mutate(viewingRecord.id); setViewingRecord(null); } }} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center gap-1"><Trash2 className="w-4 h-4"/>Hapus</button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* ── Edit History Modal ── */}
+      {historyRecord && <HistoryModal record={historyRecord} onClose={() => setHistoryRecord(null)} />}
+    </div>
+  );
+}
+
+// Inline HistoryModal component
+function HistoryModal({ record, onClose }: { record: ObservationRecord; onClose: () => void }) {
+  const { data: logs, isLoading } = useQuery({
+    queryKey: ["obs-history", record.id],
+    queryFn: () => api.get(`/v1/phenotyping/records/${record.id}/history`).then(r => r.data as {id:number;action:string;changes:Record<string,unknown>;created_at:string;user?:{name:string}}[]),
+  });
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b">
+          <div>
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2"><History className="w-4 h-4 text-blue-500"/> Riwayat Edit</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Plot {record.plot_no} · R{record.replication}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-400"/></button>
+        </div>
+        <div className="p-5">
+          {isLoading ? <div className="text-center py-8 text-gray-400 text-sm">Memuat riwayat...</div> :
+          !logs?.length ? <div className="text-center py-8 text-gray-400 text-sm">Belum ada riwayat perubahan.</div> :
+          <div className="space-y-3">
+            {logs.map(log => (
+              <div key={log.id} className="border border-gray-100 rounded-lg p-3 text-sm">
+                <div className="flex items-center justify-between mb-1">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${log.action==="created"?"bg-green-50 text-green-700":log.action==="deleted"?"bg-red-50 text-red-700":"bg-blue-50 text-blue-700"}`}>{log.action}</span>
+                  <span className="text-xs text-gray-400">{new Date(log.created_at).toLocaleString("id-ID")}</span>
+                </div>
+                {log.user && <p className="text-xs text-gray-500">oleh <strong>{log.user.name}</strong></p>}
+                {log.changes && Object.keys(log.changes).length > 0 && (
+                  <div className="mt-2 text-xs text-gray-500 bg-gray-50 rounded p-2 max-h-32 overflow-y-auto">
+                    <pre className="whitespace-pre-wrap">{JSON.stringify(log.changes, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>}
+        </div>
+      </div>
     </div>
   );
 }

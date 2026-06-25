@@ -75,8 +75,9 @@ class ObservationRecordController extends Controller
         }
 
         foreach ($values as $value) {
+            $sampleNum = $value['sample_number'] ?? 1;
             ObservationValue::updateOrCreate(
-                ['observation_record_id' => $record->id, 'characteristic_id' => $value['characteristic_id']],
+                ['observation_record_id' => $record->id, 'characteristic_id' => $value['characteristic_id'], 'sample_number' => $sampleNum],
                 ['value' => $value['value'] ?? null]
             );
         }
@@ -99,6 +100,7 @@ class ObservationRecordController extends Controller
             'values' => ['nullable', 'array'],
             'values.*.characteristic_id' => ['required_with:values', 'exists:characteristics,id'],
             'values.*.value' => ['nullable', 'numeric'],
+            'values.*.sample_number' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $values = $data['values'] ?? null;
@@ -109,10 +111,12 @@ class ObservationRecordController extends Controller
 
         if ($values !== null) {
             foreach ($values as $value) {
+                $sampleNum = $value['sample_number'] ?? 1;
                 ObservationValue::updateOrCreate(
                     [
                         'observation_record_id' => $record->id,
                         'characteristic_id' => $value['characteristic_id'],
+                        'sample_number' => $sampleNum,
                     ],
                     ['value' => $value['value'] ?? null]
                 );
@@ -129,10 +133,50 @@ class ObservationRecordController extends Controller
     public function destroy(ObservationRecord $record): JsonResponse
     {
         AuditService::logDeleted($record);
-        $record->values()->delete();
-        $record->forceDelete(); // hard-delete so the same plot/rep can be re-entered
+        $record->delete(); // soft-delete — restorable within 30 days
 
         return response()->json(['message' => 'Observation record deleted.']);
+    }
+
+    /** List soft-deleted records (up to 30 days) for restore UI */
+    public function deletedIndex(Request $request): JsonResponse
+    {
+        $records = ObservationRecord::onlyTrashed()
+            ->with(['genotype', 'environment', 'recorder', 'values.characteristic'])
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->when($request->filled('environment_id'), fn($q) => $q->where('environment_id', $request->environment_id))
+            ->orderBy('deleted_at', 'desc')
+            ->paginate($request->per_page ?? 50);
+
+        $records->getCollection()->transform(fn($r) => $this->formatRecord($r));
+        return response()->json($records);
+    }
+
+    /** Restore a soft-deleted record */
+    public function restore(int $id): JsonResponse
+    {
+        $record = ObservationRecord::onlyTrashed()
+            ->where('id', $id)
+            ->where('deleted_at', '>=', now()->subDays(30))
+            ->firstOrFail();
+
+        $record->restore();
+        AuditService::logAction('restored', $record);
+
+        return response()->json(['message' => 'Record restored.', 'record' => $this->formatRecord($record->load(['genotype', 'environment', 'recorder', 'values.characteristic']))]);
+    }
+
+    /** Edit history for a record via AuditLog */
+    public function history(ObservationRecord $record): JsonResponse
+    {
+        $logs = \App\Models\AuditLog::where('auditable_type', ObservationRecord::class)
+            ->where('auditable_id', $record->id)
+            ->with('user')
+            ->orderBy('created_at', 'desc')
+            ->limit(50)
+            ->get();
+
+        return response()->json($logs);
     }
 
     /**
@@ -233,11 +277,25 @@ class ObservationRecordController extends Controller
             'notes' => $record->notes,
             'recorded_by' => $record->recorded_by,
             'recorder' => $record->recorder,
-            'values' => $record->values->mapWithKeys(fn($v) => [
-                $v->characteristic?->code ?? $v->characteristic_id => $v->value !== null ? (float) $v->value : null,
+            // For backward compat: flat values map (sample 1 / average per char code)
+            'values' => $record->values
+                ->groupBy(fn($v) => $v->characteristic?->code ?? $v->characteristic_id)
+                ->mapWithKeys(fn($group, $code) => [
+                    $code => $group->count() > 1
+                        ? round($group->whereNotNull('value')->avg('value'), 4)
+                        : ($group->first()?->value !== null ? (float) $group->first()->value : null),
+                ]),
+            // Full samples including sample_number
+            'samples' => $record->values->map(fn($v) => [
+                'characteristic_id' => $v->characteristic_id,
+                'code' => $v->characteristic?->code,
+                'sample_number' => $v->sample_number,
+                'value' => $v->value !== null ? (float) $v->value : null,
             ]),
+            'staff_name' => $record->recorder?->name,
             'created_at' => $record->created_at,
             'updated_at' => $record->updated_at,
+            'deleted_at' => $record->deleted_at,
         ];
     }
 }

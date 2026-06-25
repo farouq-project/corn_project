@@ -95,7 +95,15 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
 
   // Get current location
   const getCurrentLocation = () => {
-    if (!navigator.geolocation) { alert("Browser tidak mendukung geolokasi."); return; }
+    if (!navigator.geolocation) {
+      alert("Browser tidak mendukung geolokasi.");
+      return;
+    }
+    // Geolocation requires HTTPS — detect insecure context and warn
+    if (typeof window !== "undefined" && window.location.protocol !== "https:" && window.location.hostname !== "localhost") {
+      alert("Geolokasi memerlukan koneksi HTTPS. Halaman ini menggunakan HTTP, sehingga browser memblokir akses lokasi.\n\nSolusi: Aktifkan HTTPS di server (Certbot/Let's Encrypt), atau masukkan koordinat GPS secara manual.");
+      return;
+    }
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
@@ -116,7 +124,15 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
         fetchElevation(newLat, newLng);
         fetchWeather(newLat, newLng);
       },
-      () => { setLocating(false); alert("Gagal mendapatkan lokasi. Pastikan izin lokasi diaktifkan."); }
+      (err) => {
+        setLocating(false);
+        const msgs: Record<number, string> = {
+          1: "Izin lokasi ditolak. Aktifkan izin lokasi di pengaturan browser.",
+          2: "Lokasi tidak tersedia. Pastikan GPS aktif.",
+          3: "Timeout mendapatkan lokasi. Coba lagi.",
+        };
+        alert(msgs[err.code] ?? `Error ${err.code}: ${err.message}`);
+      }
     );
   };
 

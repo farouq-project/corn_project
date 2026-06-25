@@ -36,6 +36,8 @@ interface RowData {
   genotype_name: string;
   environment_code: string;
   replication: number;
+  staff_name: string;
+  submitted_at: string;
   [characteristicCode: string]: unknown;
 }
 
@@ -46,6 +48,8 @@ const DEFAULT_PINNED_COLUMNS = ["plot_no", "genotype_code", "genotype_name", "en
 const STATIC_COLUMN_LABELS: Record<string, string> = {
   plot_no: "No Plot",
   genotype_code: "Kode Gen",
+  staff_name: "Staff",
+  submitted_at: "Tgl Submit",
   genotype_name: "Gen",
   environment_code: "Lokasi",
   replication: "R",
@@ -121,9 +125,10 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
         plot_no: record.plot_no,
         genotype_code: record.genotype?.genotype_code ?? "",
         genotype_name: record.genotype?.genotype_name ?? "",
-        // Prefer user-defined name over auto-generated code (matches what's in Master Data)
         environment_code: record.environment?.name ?? record.environment?.environment_code ?? "",
         replication: record.replication,
+        staff_name: (record as ObservationRecord & { staff_name?: string }).staff_name ?? record.recorder?.name ?? "—",
+        submitted_at: record.created_at ? new Date(record.created_at).toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" }) : "—",
         ...Object.fromEntries(characteristics.map((c) => [c.code, record.values?.[c.code] ?? null])),
       })),
     [records, characteristics]
@@ -133,18 +138,20 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
     plot_no: 70,
     genotype_code: 80,
     genotype_name: 90,
-    environment_code: 80, // compact — wraps if needed
+    environment_code: 80,
     replication: 44,
+    staff_name: 90,
+    submitted_at: 90,
   };
 
   const columns = useMemo<ColumnDef<RowData, unknown>[]>(() => {
-    const staticCols = (["plot_no", "genotype_code", "genotype_name", "environment_code", "replication"] as const).map((id) =>
+    const staticCols = (["plot_no", "genotype_code", "genotype_name", "environment_code", "replication", "staff_name", "submitted_at"] as const).map((id) =>
       columnHelper.accessor(id, {
         id,
         size: COLUMN_WIDTHS[id],
         header: STATIC_COLUMN_LABELS[id],
         cell: (info) => (
-          <span className={id === "environment_code" ? "block text-xs leading-tight break-words whitespace-normal max-w-[80px]" : "whitespace-nowrap"}>
+          <span className={id === "environment_code" ? "block text-xs leading-tight break-words whitespace-normal max-w-[80px]" : "whitespace-nowrap text-xs"}>
             {info.getValue() as string | number}
           </span>
         ),

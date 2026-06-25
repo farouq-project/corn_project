@@ -207,6 +207,9 @@ Route::prefix('v1')->group(function () {
             Route::post('records', [ObservationRecordController::class, 'store']);
             Route::put('records/{record}', [ObservationRecordController::class, 'update']);
             Route::delete('records/{record}', [ObservationRecordController::class, 'destroy']);
+            Route::get('records/deleted', [ObservationRecordController::class, 'deletedIndex']);
+            Route::post('records/{id}/restore', [ObservationRecordController::class, 'restore']);
+            Route::get('records/{record}/history', [ObservationRecordController::class, 'history']);
 
             Route::get('aggregate', [ObservationRecordController::class, 'aggregate']);
 
