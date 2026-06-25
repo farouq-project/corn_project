@@ -2,7 +2,8 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save } from "lucide-react";
+import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save, Eye, Trash2 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -29,6 +30,8 @@ export default function DataPengamatanPage() {
 
   // ── Wizard state ────────────────────────────────────────────────────────────
   const [dismissedBatchIds, setDismissedBatchIds] = useState<Set<number>>(new Set());
+  const [viewingRecord, setViewingRecord] = useState<ObservationRecord | null>(null);
+  const [deletingRecordId, setDeletingRecordId] = useState<number | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1|2|3>(1);
   // Step 1 fields
@@ -197,6 +200,24 @@ export default function DataPengamatanPage() {
 
   const uploadMutation = useMutation({ mutationFn: (file: File) => { const fd=new FormData(); fd.append("file",file); return api.post<{batch:ImportBatch}>("/v1/phenotyping/import/upload",fd,{headers:{"Content-Type":"multipart/form-data"}}); }, onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); setSelectedBatchId(res.data.batch.id); toast.success(`File diupload: ${res.data.batch.total_rows} baris`); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const validateMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/validate`), onSuccess: () => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["import-preview"]}); toast.success("Validasi selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
+  const deleteRecordMutation = useMutation({
+    mutationFn: (id: number) => phenotypingService.deleteRecord(id),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); toast.success("Baris pengamatan dihapus"); setDeletingRecordId(null); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const resetBatchMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/v1/phenotyping/import/batches/${id}/reset`),
+    onSuccess: () => { queryClient.invalidateQueries({queryKey:["import-batches"]}); toast.success("Batch direset, silakan validasi ulang"); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const deleteBatchMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/phenotyping/import/batches/${id}`),
+    onSuccess: () => { queryClient.invalidateQueries({queryKey:["import-batches"]}); setSelectedBatchId(null); toast.success("Batch dihapus"); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
   const confirmMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/confirm`), onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["observation-records"]}); toast.success((res.data as {message?:string})?.message ?? "Import selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const rollbackMutation = useMutation({ mutationFn: (id:number) => api.post(`/v1/phenotyping/import/batches/${id}/rollback`), onSuccess: res => { queryClient.invalidateQueries({queryKey:["import-batches"]}); queryClient.invalidateQueries({queryKey:["observation-records"]}); toast.success((res.data as {message?:string})?.message ?? "Rollback selesai"); }, onError: e => toast.error(getApiErrorMessage(e)) });
 
@@ -263,6 +284,14 @@ export default function DataPengamatanPage() {
                   <button onClick={() => { if(confirm("Rollback akan menghapus data yang diimpor. Lanjutkan?")) { rollbackMutation.mutate(selectedBatch.id); setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); } }} disabled={rollbackMutation.isPending} className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-50 disabled:opacity-50"><RotateCcw className="w-3.5 h-3.5"/>Rollback</button>
                   <button onClick={() => { setDismissedBatchIds(p => new Set([...p, selectedBatch.id])); setSelectedBatchId(null); }} className="flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-500 text-xs rounded-lg hover:bg-gray-50"><X className="w-3.5 h-3.5"/>Tutup</button>
                 </>}
+                {/* Stuck/failed batch: allow reset or delete */}
+                {["importing","failed"].includes(selectedBatch.status) && (
+                  <div className="flex gap-2 p-2 bg-orange-50 border border-orange-200 rounded-lg text-xs text-orange-700 w-full">
+                    <span className="flex-1">Import {selectedBatch.status === "importing" ? "terhenti (stuck)" : "gagal"}.</span>
+                    <button onClick={() => resetBatchMutation.mutate(selectedBatch.id)} disabled={resetBatchMutation.isPending} className="px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 disabled:opacity-50 font-medium">Reset & Validasi Ulang</button>
+                    <button onClick={() => { if(confirm("Hapus batch ini permanen?")) deleteBatchMutation.mutate(selectedBatch.id); }} disabled={deleteBatchMutation.isPending} className="px-2 py-1 border border-orange-300 text-orange-600 rounded hover:bg-orange-100">Hapus Batch</button>
+                  </div>
+                )}
               </div>
               {/* Preview rows */}
               {["validated","completed"].includes(selectedBatch.status) && (
@@ -333,6 +362,8 @@ export default function DataPengamatanPage() {
             characteristics={characteristics}
             isLoading={isLoading}
             onCellChange={(record, characteristic, value) => updateValueMutation.mutate({ record, characteristic, value })}
+            onViewRow={(r) => setViewingRecord(r)}
+            onDeleteRow={(r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}?`)) deleteRecordMutation.mutate(r.id); }}
           />
         </div>
       )}
@@ -522,6 +553,63 @@ export default function DataPengamatanPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Record Detail Modal ── */}
+      {viewingRecord && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="font-semibold text-gray-900">Detail Pengamatan</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Plot {viewingRecord.plot_no} · R{viewingRecord.replication}</p>
+              </div>
+              <button onClick={() => setViewingRecord(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-400"/></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-400">No Plot</p>
+                  <p className="font-semibold text-gray-800">{viewingRecord.plot_no}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-400">Replikasi</p>
+                  <p className="font-semibold text-gray-800">R{viewingRecord.replication}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-400">Genotipe</p>
+                  <p className="font-semibold text-gray-800">{viewingRecord.genotype?.genotype_code}</p>
+                  <p className="text-xs text-gray-500">{viewingRecord.genotype?.genotype_name}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs text-gray-400">Lokasi</p>
+                  <p className="font-semibold text-gray-800">{viewingRecord.environment?.name ?? viewingRecord.environment?.environment_code}</p>
+                </div>
+              </div>
+              {/* Observed values */}
+              {viewingRecord.values && Object.keys(viewingRecord.values).length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Nilai Pengamatan</p>
+                  <div className="space-y-1">
+                    {Object.entries(viewingRecord.values as Record<string, number | null>).map(([code, val]) => {
+                      const char = characteristics.find(c => c.code === code);
+                      return (
+                        <div key={code} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-gray-50">
+                          <span className="text-sm text-gray-700">{char?.name ?? code} {char?.unit && <span className="text-xs text-gray-400">({char.unit})</span>}</span>
+                          <span className="font-mono font-semibold text-gray-900">{val !== null ? val : "—"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 pt-2 border-t">
+                <button onClick={() => setViewingRecord(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
+                <button onClick={() => { if(confirm(`Hapus baris Plot ${viewingRecord.plot_no} R${viewingRecord.replication}?`)) { deleteRecordMutation.mutate(viewingRecord.id); setViewingRecord(null); } }} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center gap-1"><Trash2 className="w-4 h-4"/>Hapus</button>
+              </div>
             </div>
           </div>
         </div>

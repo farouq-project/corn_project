@@ -238,7 +238,7 @@ class PhenotypingImportService
 
         $importedCount = 0;
 
-        DB::transaction(function () use ($rows, $characteristicCache, &$environmentCache, $genotypeCache, $batch, $confirmedByUserId, &$importedCount) {
+        try { DB::transaction(function () use ($rows, $characteristicCache, &$environmentCache, $genotypeCache, $batch, $confirmedByUserId, &$importedCount) {
             foreach ($rows as $row) {
                 $norm = $row->normalized_data;
                 if (empty($norm)) continue;
@@ -306,7 +306,10 @@ class PhenotypingImportService
 
                 $importedCount++;
             }
-        });
+        }); } catch (\Throwable $e) {
+            $batch->update(['status' => 'failed', 'status_message' => $e->getMessage()]);
+            throw $e;
+        }
 
         $batch->update([
             'status' => 'completed',

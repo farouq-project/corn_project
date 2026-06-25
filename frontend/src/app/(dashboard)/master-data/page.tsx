@@ -671,6 +671,7 @@ export default function MasterDataPage() {
                   seasons={seasonsList ?? []}
                   editMode={!!editingEnv}
                   defaultValues={editingEnv ? {
+                    environment_code: editingEnv.environment_code ?? "",
                     name: editingEnv.name ?? "",
                     address: editingEnv.address ?? "",
                     latitude: editingEnv.latitude,

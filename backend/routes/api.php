@@ -219,6 +219,8 @@ Route::prefix('v1')->group(function () {
                 Route::get('batches/{batch}/preview', [PhenotypingImportController::class, 'preview']);
                 Route::post('batches/{batch}/confirm', [PhenotypingImportController::class, 'confirm']);
                 Route::post('batches/{batch}/rollback', [PhenotypingImportController::class, 'rollback']);
+                Route::post('batches/{batch}/reset', [PhenotypingImportController::class, 'resetBatch']);
+                Route::delete('batches/{batch}', [PhenotypingImportController::class, 'deleteBatch']);
             });
         });
 

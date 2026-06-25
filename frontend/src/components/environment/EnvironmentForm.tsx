@@ -8,15 +8,16 @@ import { MapPin, Navigation, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const schema = z.object({
+  environment_code: z.string().optional(), // editable in edit mode
   name: z.string().min(1, "Nama kebun percobaan wajib diisi"),
   address: z.string().optional(),
   latitude: z.coerce.number().optional().nullable(),
   longitude: z.coerce.number().optional().nullable(),
-  season_name: z.string().optional(), // free-text season, no FK
+  season_name: z.string().optional(),
   elevation_m: z.coerce.number().int().optional().nullable(),
   avg_temperature_c: z.coerce.number().optional().nullable(),
   total_rainfall_mm: z.coerce.number().optional().nullable(),
-  luas_ha: z.coerce.number().optional().nullable(), // stored as meters now (label changed)
+  luas_ha: z.coerce.number().optional().nullable(),
   notes: z.string().optional(),
 });
 
@@ -171,6 +172,16 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* Kode — editable only when editing existing Lokasi */}
+      {editMode && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Kode Lokasi</label>
+          <input {...register("environment_code")} placeholder="contoh: KEBUN-26"
+            className={`${inputCls} font-mono`} />
+          <p className="text-xs text-gray-400 mt-0.5">Kode unik untuk identifikasi lokasi dalam import dan referensi</p>
+        </div>
+      )}
+
       {/* Nama Kebun Percobaan */}
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Nama Kebun Percobaan *</label>

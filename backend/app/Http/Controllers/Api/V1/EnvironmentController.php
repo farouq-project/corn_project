@@ -81,11 +81,11 @@ class EnvironmentController extends Controller
     public function update(Request $request, Environment $environment): JsonResponse
     {
         $data = $request->validate([
+            'environment_code' => ['nullable', 'string', 'max:30', 'unique:environments,environment_code,' . $environment->id],
             'name' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
             'luas_ha' => ['nullable', 'numeric', 'min:0'],
             'season_name' => ['nullable', 'string', 'max:100'],
-            'perlakuan' => ['nullable', 'string', 'max:255'],
             'latitude' => ['nullable', 'numeric'],
             'longitude' => ['nullable', 'numeric'],
             'elevation_m' => ['nullable', 'integer'],

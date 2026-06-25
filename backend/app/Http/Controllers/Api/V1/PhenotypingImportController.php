@@ -116,4 +116,26 @@ class PhenotypingImportController extends Controller
             'result' => $result,
         ]);
     }
+
+    /** Reset a stuck/failed batch back to 'parsed' so it can be re-validated. */
+    public function resetBatch(PhenotypingImportBatch $batch): JsonResponse
+    {
+        if (!in_array($batch->status, ['failed', 'importing', 'validating'])) {
+            return response()->json(['message' => 'Hanya batch berstatus gagal/stuck yang dapat direset.'], 422);
+        }
+
+        $batch->stagingRows()->update(['status' => 'pending', 'errors' => null, 'warnings' => null]);
+        $batch->update(['status' => 'parsed', 'status_message' => null]);
+
+        return response()->json(['message' => 'Batch berhasil direset ke status parsed. Jalankan validasi ulang.', 'batch' => $batch]);
+    }
+
+    /** Permanently delete a batch and all its staging rows. */
+    public function deleteBatch(PhenotypingImportBatch $batch): JsonResponse
+    {
+        $batch->stagingRows()->delete();
+        $batch->delete();
+
+        return response()->json(['message' => 'Batch dihapus.']);
+    }
 }

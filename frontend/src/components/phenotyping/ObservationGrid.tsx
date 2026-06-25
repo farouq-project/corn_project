@@ -15,7 +15,7 @@ import {
   type ColumnPinningState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ChevronUp, ChevronDown, ChevronsUpDown, Columns3, Pin, PinOff } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Columns3, Pin, PinOff, Eye, Edit2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Characteristic, ObservationRecord } from "@/types";
 
@@ -24,6 +24,9 @@ interface ObservationGridProps {
   characteristics: Characteristic[];
   isLoading?: boolean;
   onCellChange: (record: ObservationRecord, characteristic: Characteristic, value: number | null) => void;
+  onEditRow?: (record: ObservationRecord) => void;
+  onDeleteRow?: (record: ObservationRecord) => void;
+  onViewRow?: (record: ObservationRecord) => void;
 }
 
 interface RowData {
@@ -48,17 +51,26 @@ const STATIC_COLUMN_LABELS: Record<string, string> = {
   replication: "R",
 };
 
+/** Returns inline styles for sticky (frozen) columns.
+ *  The inline backgroundColor is CRITICAL — it overrides any class-based hover/bg
+ *  so scrolled content cannot bleed through the frozen pane.
+ */
 function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
   const isPinned = column.getIsPinned();
+  if (!isPinned) {
+    // Non-pinned cells: only give headers a top-sticky z-index
+    return isHeader ? { zIndex: 1 } : {};
+  }
+
+  // (unused variable removed — all pinned cells get the same shadow for simplicity)
 
   return {
-    position: isPinned ? "sticky" : undefined,
-    left: isPinned === "left" ? `${column.getStart("left")}px` : undefined,
-    // Headers need z-index 3 (above both pinned body cells at 2 and scrollable content at 0)
-    zIndex: isPinned ? (isHeader ? 3 : 2) : isHeader ? 1 : 0,
-    // Solid background stops scrolled content showing through pinned columns
-    backgroundColor: isPinned ? (isHeader ? "rgb(249,250,251)" : "white") : undefined,
-    boxShadow: isPinned === "left" ? "2px 0 5px -1px rgba(0,0,0,0.12)" : undefined,
+    position: "sticky",
+    left: `${column.getStart("left")}px`,
+    zIndex: isHeader ? 30 : 20,        // high values ensure frozen pane is always above scrolled content
+    backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",  // always opaque
+    // Right shadow only on the last pinned column to create the frozen-pane divider
+    boxShadow: "2px 0 0 0 rgb(209,213,219), 3px 0 6px -2px rgba(0,0,0,0.10)",
   };
 }
 
@@ -89,7 +101,7 @@ function EditableCell({
   );
 }
 
-export function ObservationGrid({ records, characteristics, isLoading, onCellChange }: ObservationGridProps) {
+export function ObservationGrid({ records, characteristics, isLoading, onCellChange, onEditRow, onDeleteRow, onViewRow }: ObservationGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -156,7 +168,20 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
       })
     );
 
-    return [...staticCols, ...charCols] as ColumnDef<RowData, unknown>[];
+    // Aksi column — only added when row action handlers are provided
+    const aksiCol: ColumnDef<RowData, unknown>[] = (onEditRow || onDeleteRow || onViewRow) ? [{
+      id: "__aksi__",
+      header: "Aksi",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-1">
+          {onViewRow && <button onClick={() => onViewRow(row.original.record)} title="Lihat Detail" className="p-1.5 rounded hover:bg-blue-50 text-blue-400 transition"><Eye className="w-3.5 h-3.5"/></button>}
+          {onEditRow && <button onClick={() => onEditRow(row.original.record)} title="Edit" className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500 transition"><Edit2 className="w-3.5 h-3.5"/></button>}
+          {onDeleteRow && <button onClick={() => onDeleteRow(row.original.record)} title="Hapus" className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"><Trash2 className="w-3.5 h-3.5"/></button>}
+        </div>
+      ),
+    }] : [];
+
+    return [...staticCols, ...charCols, ...aksiCol] as ColumnDef<RowData, unknown>[];
   }, [characteristics, onCellChange]);
 
   const table = useReactTable({
@@ -215,8 +240,8 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
         </div>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-gray-200 max-h-[60vh] md:max-h-[70vh]">
-        <table className="min-w-full border-separate border-spacing-0 text-sm">
+      <div className="overflow-auto rounded-lg border border-gray-200 max-h-[60vh] md:max-h-[70vh]" style={{isolation: "isolate"}}>
+        <table className="min-w-full border-separate border-spacing-0 text-sm" style={{position: "relative"}}>
           <thead className="bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
@@ -276,16 +301,26 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50/60 transition">
-                  {row.getVisibleCells().map((cell) => (
-                    <td
-                      key={cell.id}
-                      style={getPinningStyles(cell.column)}
-                      className="px-2 py-1 whitespace-nowrap"
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                <tr key={row.id} className="group transition">
+                  {row.getVisibleCells().map((cell) => {
+                    const pinned = cell.column.getIsPinned();
+                    return (
+                      <td
+                        key={cell.id}
+                        style={{
+                          ...getPinningStyles(cell.column),
+                          // Non-pinned cells: explicit background so no bleed-through on hover
+                          ...(pinned ? {} : { backgroundColor: undefined }),
+                        }}
+                        className={cn(
+                          "px-2 py-1 whitespace-nowrap",
+                          pinned ? "" : "bg-white group-hover:bg-gray-50"
+                        )}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}
