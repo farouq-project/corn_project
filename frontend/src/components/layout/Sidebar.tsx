@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
+  Boxes,
   Wallet,
   Map,
   Archive,
@@ -40,6 +41,7 @@ const navigation = [
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
       { name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive },
+      { name: "Inventaris", href: "/pengamatan/inventory", icon: Boxes },
     ],
   },
   {

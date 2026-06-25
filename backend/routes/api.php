@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\V1\TrialController;
 use App\Http\Controllers\Api\V1\TrialPlotController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\Api\V1\EnvironmentConditionController;
+use App\Http\Controllers\Api\V1\InventoryItemController;
 use App\Http\Controllers\Api\V1\MediaController;
 use App\Http\Controllers\Api\V1\StorageMonitorController;
 use App\Http\Controllers\Api\V1\VarietyCandidateController;
@@ -46,6 +47,14 @@ Route::prefix('v1')->group(function () {
 
         // General file upload (receipts, activity photos, etc.)
         Route::post('media/upload', [MediaController::class, 'upload']);
+
+        // Inventory items (lab equipment, tools, etc.)
+        Route::get('inventory-items', [InventoryItemController::class, 'index']);
+        Route::post('inventory-items', [InventoryItemController::class, 'store']);
+        Route::get('inventory-items/{inventoryItem}', [InventoryItemController::class, 'show']);
+        Route::put('inventory-items/{inventoryItem}', [InventoryItemController::class, 'update']);
+        Route::delete('inventory-items/{inventoryItem}', [InventoryItemController::class, 'destroy']);
+        Route::post('inventory-items/bulk-destroy', [InventoryItemController::class, 'bulkDestroy']);
 
         // Environment conditions (treatment types: Normal, Shading, Drought, etc.)
         Route::get('environment-conditions', [EnvironmentConditionController::class, 'index']);
