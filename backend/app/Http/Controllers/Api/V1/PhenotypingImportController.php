@@ -117,11 +117,11 @@ class PhenotypingImportController extends Controller
         ]);
     }
 
-    /** Reset a stuck/failed batch back to 'parsed' so it can be re-validated. */
+    /** Reset a batch (stuck/failed/validated) back to 'parsed' so it can be re-validated. */
     public function resetBatch(PhenotypingImportBatch $batch): JsonResponse
     {
-        if (!in_array($batch->status, ['failed', 'importing', 'validating'])) {
-            return response()->json(['message' => 'Hanya batch berstatus gagal/stuck yang dapat direset.'], 422);
+        if (!in_array($batch->status, ['failed', 'importing', 'validating', 'validated'])) {
+            return response()->json(['message' => 'Batch tidak dapat direset dari status saat ini.'], 422);
         }
 
         $batch->stagingRows()->update(['status' => 'pending', 'errors' => null, 'warnings' => null]);

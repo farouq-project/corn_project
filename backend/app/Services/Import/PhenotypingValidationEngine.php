@@ -3,14 +3,14 @@
 namespace App\Services\Import;
 
 use App\Models\Characteristic;
-use App\Models\Environment;
+use App\Models\EnvironmentCondition;
 use App\Models\Genotype;
 use App\Models\ObservationRecord;
 
 class PhenotypingValidationEngine
 {
     private array $genotypeCache = [];
-    private array $environmentCache = [];
+    private array $environmentCache = []; // NOW: environment_conditions (treatment types)
     private array $characteristicCache = [];
 
     public function __construct(private PhenotypingNormalizationService $normalizer)
@@ -25,15 +25,10 @@ class PhenotypingValidationEngine
                 }
             });
 
-        Environment::select(['id', 'environment_code', 'name'])
-            ->get()
-            ->each(function ($e) {
-                $this->environmentCache[strtoupper($e->environment_code)] = $e->id;
-                // Also index by user-defined name so "NORMAL" matches a Lingkungan named "Normal"
-                if ($e->name) {
-                    $this->environmentCache[strtoupper($e->name)] = $e->id;
-                }
-            });
+        // Environment column now references environment_conditions (Normal, Shading, Drought)
+        // NOT the Lokasi (physical field location) table
+        EnvironmentCondition::all(['id', 'name'])
+            ->each(fn($c) => $this->environmentCache[strtoupper($c->name)] = $c->id);
 
         Characteristic::active()
             ->get(['id', 'code', 'decimal_places'])
@@ -68,15 +63,15 @@ class PhenotypingValidationEngine
             }
         }
 
-        // Required: environment_code must resolve (warn rather than error — confirmImport auto-creates if missing)
+        // Required: environment_code resolves to environment_conditions (treatment type like Normal, Shading)
         $environmentId = null;
         if (blank($norm['environment_code'] ?? null)) {
-            $errors[] = "Baris {$rowNumber}: Environment kosong.";
+            $warnings[] = "Baris {$rowNumber}: Environment kosong — kolom ini sebaiknya diisi dengan nama kondisi perlakuan (contoh: Normal, Shading, Drought).";
         } else {
             $environmentId = $this->environmentCache[strtoupper($norm['environment_code'])] ?? null;
             if (!$environmentId) {
-                // Warn, not error — confirmImport will create a Lokasi with this name if it doesn't exist
-                $warnings[] = "Baris {$rowNumber}: Lokasi '{$norm['environment_code']}' belum ada di Master Data — akan dibuat otomatis saat konfirmasi.";
+                // Warn, not error — confirmImport will create an EnvironmentCondition with this name
+                $warnings[] = "Baris {$rowNumber}: Environment '{$norm['environment_code']}' belum ada di Master Data → Environment — akan dibuat otomatis saat konfirmasi.";
             }
         }
 

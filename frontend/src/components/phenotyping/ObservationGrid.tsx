@@ -58,19 +58,25 @@ const STATIC_COLUMN_LABELS: Record<string, string> = {
 function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
   const isPinned = column.getIsPinned();
   if (!isPinned) {
-    // Non-pinned cells: only give headers a top-sticky z-index
     return isHeader ? { zIndex: 1 } : {};
   }
 
-  // (unused variable removed — all pinned cells get the same shadow for simplicity)
+  // Exact pixel width from TanStack Table's size — CRITICAL for preventing the
+  // transparent strip between the sticky cell's visual edge and its actual boundary.
+  const size = column.getSize();
+  const left = column.getStart("left");
 
   return {
     position: "sticky",
-    left: `${column.getStart("left")}px`,
-    zIndex: isHeader ? 30 : 20,        // high values ensure frozen pane is always above scrolled content
-    backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",  // always opaque
-    // Right shadow only on the last pinned column to create the frozen-pane divider
-    boxShadow: "2px 0 0 0 rgb(209,213,219), 3px 0 6px -2px rgba(0,0,0,0.10)",
+    left: `${left}px`,
+    // Width must match exactly so the opaque background covers the full cell area
+    width: `${size}px`,
+    minWidth: `${size}px`,
+    maxWidth: `${size}px`,
+    zIndex: isHeader ? 30 : 20,
+    backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",
+    // Solid 1px right border acts as the frozen-pane divider (more reliable than box-shadow)
+    boxShadow: "inset -1px 0 0 rgb(209,213,219), 3px 0 8px -3px rgba(0,0,0,0.12)",
   };
 }
 
@@ -248,7 +254,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    style={{ ...getPinningStyles(header.column, true), width: header.column.getSize() || undefined, maxWidth: header.column.getSize() || undefined }}
+                    style={getPinningStyles(header.column, true)}
                     className={cn(
                       "px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 sticky top-0 bg-gray-50",
                       header.column.getIsPinned() && "bg-gray-50"

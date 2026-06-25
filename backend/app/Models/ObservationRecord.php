@@ -10,7 +10,7 @@ class ObservationRecord extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'record_code', 'plot_no', 'genotype_id', 'environment_id', 'season_id',
+        'record_code', 'plot_no', 'genotype_id', 'environment_id', 'environment_condition_id', 'season_id',
         'replication', 'recorded_by', 'notes',
     ];
 
