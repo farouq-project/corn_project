@@ -91,7 +91,15 @@ class PhenotypingImportController extends Controller
             return response()->json(['message' => 'Tidak ada baris valid untuk diimpor.'], 422);
         }
 
-        $batch = $this->importService->confirmImport($batch, request()->user()->id);
+        try {
+            $batch = $this->importService->confirmImport($batch, request()->user()->id);
+        } catch (\Throwable $e) {
+            // confirmImport already set status='failed'; return 422 not 500
+            return response()->json([
+                'message' => 'Import gagal: ' . $e->getMessage(),
+                'batch' => $batch->fresh(),
+            ], 422);
+        }
 
         return response()->json([
             'message' => "Import selesai: {$batch->imported_rows} baris berhasil diimpor.",
