@@ -38,6 +38,7 @@ export default function StorageMonitorPage() {
   const [editGenoRows, setEditGenoRows] = useState<string[]>([""]);
   const [showImport, setShowImport] = useState(false);
   const [importResult, setImportResult] = useState<{created:number;errors:string[]} | null>(null);
+  const [smPageSize, setSmPageSize] = useState<number | "all">("all");
   const importRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
@@ -225,9 +226,20 @@ export default function StorageMonitorPage() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 text-sm text-gray-500">
-        <Package className="w-4 h-4" />
-        <span>{entries.length} entri tercatat</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-gray-500">
+          <Package className="w-4 h-4" />
+          <span>{entries.length} entri tercatat</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <span className="text-xs text-gray-400">Tampilkan:</span>
+          {([50, 100, 200, "all"] as const).map(opt => (
+            <button key={opt} onClick={() => setSmPageSize(opt)}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition border ${smPageSize === opt ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"}`}>
+              {opt === "all" ? "Semua" : opt}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
@@ -238,7 +250,7 @@ export default function StorageMonitorPage() {
           searchPlaceholder="Cari kode atau nama genotipe..."
           emptyMessage="Belum ada entri."
           getRowId={r => String(r.id)}
-          pageSize={9999}
+          pageSize={smPageSize === "all" ? 9999 : smPageSize}
           onBulkDelete={rows => bulkDeleteMutation.mutate(rows.map(r => r.id))}
           isBulkDeleting={bulkDeleteMutation.isPending}
         />

@@ -98,11 +98,10 @@ export default function DiseasePage() {
   });
 
   const { data: environments } = useQuery({
-    queryKey: ["environments-simple", selectedTrialId],
-    queryFn: () => api.get("/v1/environments", {
-      params: { trial_id: selectedTrialId, all: true },
-    }).then(r => r.data as Array<{ id: number; environment_code: string; location?: { field_name: string } }>),
-    enabled: !!selectedTrialId,
+    queryKey: ["environments-all"],
+    queryFn: () => api.get<{ data: Array<{ id: number; environment_code: string; location?: { field_name: string } }> }>("/v1/environments", {
+      params: { per_page: 100 },
+    }).then(r => r.data.data),
   });
 
   const { data: resistanceSummary } = useQuery({
@@ -608,11 +607,12 @@ export default function DiseasePage() {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi *</label>
-                      <select {...register("environment_id")} disabled={!trialWatch}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50">
+                      <select {...register("environment_id")}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                         <option value="">-- Pilih Lokasi --</option>
-                        {(environments as unknown as Array<{ id: number; environment_code: string; location?: { field_name: string } }>)
-                          ?.map(e => <option key={e.id} value={e.id}>{e.environment_code} — {e.location?.field_name}</option>)}
+                        {environments?.map(e => (
+                          <option key={e.id} value={e.id}>{e.environment_code} — {e.location?.field_name}</option>
+                        ))}
                       </select>
                       {errors.environment_id && <p className="text-red-500 text-xs mt-1">{errors.environment_id.message}</p>}
                     </div>

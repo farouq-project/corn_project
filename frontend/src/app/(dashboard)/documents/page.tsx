@@ -146,7 +146,7 @@ export default function DocumentsPage() {
                   {doc.document_date && <p>{formatDate(doc.document_date)}</p>}
                   <p>oleh {doc.uploader?.name}</p>
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                <div className="flex gap-1">
                   {doc.url && (
                     <button onClick={() => setViewingDoc(doc)} className="p-1.5 rounded hover:bg-green-50 text-green-600 transition" title="Lihat Dokumen">
                       <Eye className="w-3.5 h-3.5" />

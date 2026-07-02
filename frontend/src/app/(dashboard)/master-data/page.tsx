@@ -93,7 +93,7 @@ const storageSchema = z.object({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function MasterDataPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("genotypes");
+  const [activeTab, setActiveTab] = useState<TabType>("trials");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingChar, setEditingChar] = useState<Characteristic | null>(null);
   const [editingGenotype, setEditingGenotype] = useState<Genotype | null>(null);
@@ -120,6 +120,10 @@ export default function MasterDataPage() {
   // Inline Lokasi creation from within trial form
   const [isLokasiSubModalOpen, setIsLokasiSubModalOpen] = useState(false);
   const [lokasiSubFormKey, setLokasiSubFormKey] = useState(0);
+  // Inline Environment condition creation from within trial form
+  const [isEnvCondSubModalOpen, setIsEnvCondSubModalOpen] = useState(false);
+  const [envCondSubName, setEnvCondSubName] = useState("");
+  const [envCondSubDesc, setEnvCondSubDesc] = useState("");
   const qc = useQueryClient();
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -209,6 +213,20 @@ export default function MasterDataPage() {
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
+  const inlineEnvCondCreate = useMutation({
+    mutationFn: (d: {name:string;description?:string}) => api.post("/v1/environment-conditions", d),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["environment-conditions"] });
+      const newCond = res.data as EnvCondition;
+      tForm.setValue("environment_condition_id", newCond.id);
+      setIsEnvCondSubModalOpen(false);
+      setEnvCondSubName("");
+      setEnvCondSubDesc("");
+      toast.success("Environment ditambahkan dan dipilih");
+    },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
   const charImportMutation = useMutation({
     mutationFn: (file: File) => { const fd = new FormData(); fd.append("file", file); return api.post("/v1/phenotyping/characteristics/import", fd, {headers:{"Content-Type":"multipart/form-data"}}); },
     onSuccess: res => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); setCharImportResult(res.data as typeof charImportResult); toast.success((res.data as {message?:string})?.message ?? "Import selesai"); },
@@ -268,8 +286,8 @@ export default function MasterDataPage() {
   // ── Tab config ────────────────────────────────────────────────────────────
 
   const tabs: {id: TabType; label: string; icon: React.FC<{className?:string}>; count: number}[] = [
-    { id: "genotypes",      label: "Genotipe",        icon: Dna,        count: genotypes.length },
     { id: "trials",         label: "Research Plan",    icon: BookOpen,   count: trials.length },
+    { id: "genotypes",      label: "Genotipe",        icon: Dna,        count: genotypes.length },
     { id: "characteristics",label: "Pengamatan",       icon: Microscope, count: chars.length },
     { id: "environments",   label: "Lokasi",            icon: MapPin,     count: envs.length },
     { id: "replications",   label: "Ulangan (R)",      icon: Repeat2,    count: trials.length },
@@ -648,9 +666,15 @@ export default function MasterDataPage() {
                   </div>
                   {/* Environment (treatment condition) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Environment <span className="text-gray-400 font-normal text-xs">(kondisi perlakuan — opsional)</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        Environment <span className="text-gray-400 font-normal text-xs">(kondisi perlakuan — opsional)</span>
+                      </label>
+                      <button type="button" onClick={() => setIsEnvCondSubModalOpen(true)}
+                        className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 px-2 py-0.5 rounded hover:bg-green-50 transition">
+                        <Plus className="w-3 h-3" /> Tambah Env
+                      </button>
+                    </div>
                     <select {...tForm.register("environment_condition_id")}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
                       <option value="">-- Pilih Environment --</option>
@@ -658,9 +682,6 @@ export default function MasterDataPage() {
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
-                    {envConds.filter(c => c.is_active).length === 0 && (
-                      <p className="text-xs text-amber-600 mt-1">Belum ada Environment. Tambahkan di Master Data → Environment.</p>
-                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
@@ -804,6 +825,47 @@ export default function MasterDataPage() {
                 onCancel={() => setIsLokasiSubModalOpen(false)}
                 isSubmitting={inlineEnvCreate.isPending}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stacked Environment Condition sub-modal — opens on top of trial modal */}
+      {isEnvCondSubModalOpen && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Tambah Environment Baru</h3>
+              <button onClick={() => setIsEnvCondSubModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Environment *</label>
+                <input value={envCondSubName} onChange={e => setEnvCondSubName(e.target.value)}
+                  placeholder="contoh: Normal, Shading, Drought, Flooding"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  list="env-cond-sub-suggestions" autoFocus />
+                <datalist id="env-cond-sub-suggestions">
+                  {["Normal","Shading","Drought","Flooding","Saline","Heat Stress"].map(s => <option key={s} value={s}/>)}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Deskripsi <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                <textarea value={envCondSubDesc} onChange={e => setEnvCondSubDesc(e.target.value)} rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                  placeholder="Kondisi perlakuan..." />
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => setIsEnvCondSubModalOpen(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button>
+                <button type="button" disabled={inlineEnvCondCreate.isPending}
+                  onClick={() => {
+                    if (!envCondSubName.trim()) { toast.error("Nama wajib diisi"); return; }
+                    inlineEnvCondCreate.mutate({name: envCondSubName.trim(), description: envCondSubDesc || undefined});
+                  }}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">
+                  {inlineEnvCondCreate.isPending ? "Menyimpan..." : "Tambah & Pilih"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
