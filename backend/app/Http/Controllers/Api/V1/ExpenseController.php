@@ -34,17 +34,18 @@ class ExpenseController extends Controller
     public function budgetStore(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'budget_code' => ['required', 'string', 'unique:budgets'],
             'budget_name' => ['required', 'string'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'trial_id' => ['nullable', 'exists:trials,id'],
-            'funding_source' => ['required', 'string'],
-            'total_amount' => ['required', 'numeric', 'min:0'],
+            'funding_source' => ['nullable', 'string'],
+            'total_amount' => ['required', 'numeric', 'min:1'],
             'start_date' => ['required', 'date'],
-            'end_date' => ['required', 'date', 'after:start_date'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
             'notes' => ['nullable', 'string'],
         ]);
 
+        $data['budget_code'] = 'BGT-' . date('Ym') . '-' . strtoupper(Str::random(6));
+        $data['status'] = 'active';
         $data['created_by'] = $request->user()->id;
         $budget = Budget::create($data);
         AuditService::logCreated($budget);
@@ -156,13 +157,18 @@ class ExpenseController extends Controller
             'items.*.description' => ['nullable', 'string'],
         ]);
 
-        // Resolve or create category
+        // Resolve or create category — use explicit find+create to avoid NOT NULL on category_code
         $categoryId = null;
         if (!empty($data['category_name'])) {
-            $category = ExpenseCategory::firstOrCreate(
-                ['category_name' => $data['category_name']],
-                ['color' => '#6366f1', 'is_active' => true]
-            );
+            $category = ExpenseCategory::where('category_name', $data['category_name'])->first();
+            if (!$category) {
+                $category = ExpenseCategory::create([
+                    'category_code' => 'CAT-' . strtoupper(Str::random(8)),
+                    'category_name' => $data['category_name'],
+                    'color' => '#6366f1',
+                    'is_active' => true,
+                ]);
+            }
             $categoryId = $category->id;
         }
 
@@ -285,11 +291,11 @@ class ExpenseController extends Controller
             ->get()
             ->map(fn($b) => [
                 'id' => $b->id,
-                'name' => $b->budget_name,
-                'total' => $b->total_amount,
-                'spent' => $b->spent_amount,
-                'remaining' => $b->remaining_amount,
-                'utilization' => $b->utilization_rate,
+                'budget_name' => $b->budget_name,
+                'total_amount' => $b->total_amount,
+                'spent_amount' => $b->spent_amount,
+                'remaining_amount' => $b->remaining_amount,
+                'utilization_rate' => $b->utilization_rate,
             ]);
 
         return response()->json(compact('monthlyTotal', 'pendingCount', 'budgetUtilization'));

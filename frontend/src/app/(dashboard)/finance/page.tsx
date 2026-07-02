@@ -80,6 +80,7 @@ export default function FinancePage() {
   const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const budgetForm = useForm<BudgetForm>({ resolver: zodResolver(budgetSchema) as never });
+  const [budgetTotalDisplay, setBudgetTotalDisplay] = useState("");
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -158,13 +159,13 @@ export default function FinancePage() {
 
   const createBudgetMutation = useMutation({
     mutationFn: (data: BudgetForm) => api.post("/v1/finance/budgets", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); toast.success("Anggaran dibuat"); setIsBudgetModalOpen(false); budgetForm.reset(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); toast.success("Anggaran dibuat"); setIsBudgetModalOpen(false); budgetForm.reset(); setBudgetTotalDisplay(""); },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
   const updateBudgetMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Partial<BudgetForm> }) => api.put(`/v1/finance/budgets/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); toast.success("Anggaran diperbarui"); setIsBudgetModalOpen(false); setEditingBudget(null); budgetForm.reset(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); toast.success("Anggaran diperbarui"); setIsBudgetModalOpen(false); setEditingBudget(null); budgetForm.reset(); setBudgetTotalDisplay(""); },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
@@ -296,6 +297,7 @@ export default function FinancePage() {
   const openEditBudget = (b: Budget) => {
     setEditingBudget(b);
     budgetForm.reset({ budget_name: b.budget_name, funding_source: b.funding_source ?? "", total_amount: b.total_amount, start_date: b.start_date ?? "", end_date: b.end_date ?? "" });
+    setBudgetTotalDisplay(b.total_amount ? Number(b.total_amount).toLocaleString("id-ID") : "");
     setIsBudgetModalOpen(true);
   };
 
@@ -308,10 +310,17 @@ export default function FinancePage() {
         description="Kelola pengeluaran penelitian dan monitoring anggaran per Research Plan"
 
         actions={
-          <button onClick={() => { setTrialId(trialFilter); setIsExpenseModalOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-            <Plus className="w-4 h-4" /> Catat Pengeluaran
-          </button>
+          activeTab === "expenses" ? (
+            <button onClick={() => { setTrialId(trialFilter); setIsExpenseModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+              <Plus className="w-4 h-4" /> Catat Pengeluaran
+            </button>
+          ) : (
+            <button onClick={() => { setEditingBudget(null); budgetForm.reset(); setBudgetTotalDisplay(""); setIsBudgetModalOpen(true); }}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+              <Plus className="w-4 h-4" /> Buat Anggaran
+            </button>
+          )
         }
       />
 
@@ -432,12 +441,6 @@ export default function FinancePage() {
                   </div>
                 </div>
               )}
-              <div className="flex justify-end mb-4">
-                <button onClick={() => { setEditingBudget(null); budgetForm.reset(); setIsBudgetModalOpen(true); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-                  <Plus className="w-4 h-4" /> Buat Anggaran
-                </button>
-              </div>
               <DataTable data={budgets} isLoading={false} emptyMessage="Belum ada anggaran"
                 columns={[
                   { header: "Kode", accessorKey: "budget_code", cell: ({ getValue }) => <span className="font-mono text-xs font-semibold text-blue-700">{getValue() as string}</span> },
@@ -568,7 +571,14 @@ export default function FinancePage() {
                               className="w-full px-2 py-1.5 border border-transparent rounded focus:border-green-300 focus:outline-none text-sm bg-transparent focus:bg-white hover:bg-white/60" />
                           </td>
                           <td className="px-2 py-1.5">
-                            <input type="number" min="0" value={row.amount} onChange={e => updateRow(i, "amount", e.target.value)}
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={row.amount ? Number(row.amount).toLocaleString("id-ID") : ""}
+                              onChange={e => {
+                                const raw = e.target.value.replace(/[^\d]/g, "");
+                                updateRow(i, "amount", raw);
+                              }}
                               placeholder="0"
                               className="w-full px-2 py-1.5 border border-transparent rounded focus:border-green-300 focus:outline-none text-sm bg-transparent focus:bg-white hover:bg-white/60 text-right" />
                           </td>
@@ -672,7 +682,18 @@ export default function FinancePage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Total Anggaran (Rp) *</label>
-                  <input {...budgetForm.register("total_amount")} type="number" min="1" className={inputCls} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={budgetTotalDisplay}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/[^\d]/g, "");
+                      setBudgetTotalDisplay(raw ? Number(raw).toLocaleString("id-ID") : "");
+                      budgetForm.setValue("total_amount", raw ? Number(raw) : 0, { shouldValidate: true });
+                    }}
+                    placeholder="10.000.000"
+                    className={inputCls}
+                  />
                   {budgetForm.formState.errors.total_amount && <p className="text-red-500 text-xs mt-1">{budgetForm.formState.errors.total_amount.message}</p>}
                 </div>
               </div>
