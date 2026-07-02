@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -114,12 +115,15 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center">
-              Sistem Manajemen Penelitian Pemuliaan Jagung
+          <div className="mt-6 pt-5 border-t border-gray-100 space-y-2">
+            <p className="text-sm text-center text-gray-500">
+              Belum punya akun?{" "}
+              <Link href="/register" className="text-green-600 hover:text-green-700 font-medium">
+                Daftar
+              </Link>
             </p>
-            <p className="text-xs text-gray-400 text-center mt-1">
-              Universitas Padjadjaran © 2026
+            <p className="text-xs text-gray-400 text-center">
+              Sistem Manajemen Penelitian Pemuliaan Jagung — UNPAD © 2026
             </p>
           </div>
         </div>

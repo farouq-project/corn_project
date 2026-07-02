@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Users, Edit2, Key, X } from "lucide-react";
+import { Plus, Users, Edit2, Key, X, Clock, CheckCircle, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -71,10 +71,14 @@ const roleColors: Record<string, string> = {
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
 
+type PendingApproveForm = { role: string };
+
 export default function UsersPage() {
+  const [tab, setTab] = useState<"active" | "pending">("active");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [resetPwUser, setResetPwUser] = useState<User | null>(null);
+  const [approvingUser, setApprovingUser] = useState<User | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -82,6 +86,34 @@ export default function UsersPage() {
     queryFn: () => api.get<{ data: User[] }>("/v1/users", { params: { per_page: 50 } }).then((r) => r.data),
   });
   const users = data?.data ?? [];
+
+  const { data: pendingData, isLoading: pendingLoading } = useQuery({
+    queryKey: ["users-pending"],
+    queryFn: () => api.get<{ data: User[] }>("/v1/users/pending", { params: { per_page: 50 } }).then((r) => r.data),
+  });
+  const pendingUsers = pendingData?.data ?? [];
+
+  const approveForm = useForm<PendingApproveForm>({ defaultValues: { role: "field_researcher" } });
+
+  const approveMutation = useMutation({
+    mutationFn: ({ id, role }: { id: number; role: string }) => api.post(`/v1/users/${id}/approve`, { role }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users-pending"] });
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Pengguna berhasil disetujui");
+      setApprovingUser(null);
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/v1/users/${id}/reject`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users-pending"] });
+      toast.success("Pengguna ditolak");
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
 
   // Forms
   const createForm = useForm<CreateForm>({ resolver: zodResolver(createSchema) as never });
@@ -191,36 +223,120 @@ export default function UsersPage() {
     return acc;
   }, {});
 
+  const pendingColumns: ColumnDef<User, unknown>[] = [
+    {
+      header: "Pengguna",
+      id: "user",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-semibold text-amber-700">{row.original.name?.charAt(0)}</span>
+          </div>
+          <div>
+            <p className="font-medium text-sm">{row.original.name}</p>
+            <p className="text-xs text-gray-400">{row.original.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Mendaftar",
+      accessorKey: "created_at",
+      cell: ({ getValue }) => <span className="text-xs text-gray-400">{formatDateTime(getValue() as string)}</span>,
+    },
+    {
+      header: "Aksi",
+      id: "actions",
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setApprovingUser(row.original); approveForm.reset({ role: "field_researcher" }); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition"
+          >
+            <CheckCircle className="w-3.5 h-3.5" /> Setujui
+          </button>
+          <button
+            onClick={() => { if (confirm(`Tolak pendaftaran ${row.original.name}?`)) rejectMutation.mutate(row.original.id); }}
+            disabled={rejectMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition"
+          >
+            <XCircle className="w-3.5 h-3.5" /> Tolak
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="Manajemen Pengguna"
         description="Kelola akun dan hak akses pengguna sistem"
         actions={
-          <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-            <Plus className="w-4 h-4" /> Tambah Pengguna
-          </button>
+          tab === "active" ? (
+            <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+              <Plus className="w-4 h-4" /> Tambah Pengguna
+            </button>
+          ) : null
         }
       />
 
-      {/* Role summary */}
-      <div className="grid grid-cols-5 gap-3">
-        {Object.entries(roleLabels).map(([role, label]) => (
-          <div key={role} className={`rounded-xl border p-3 text-center ${roleColors[role]?.replace("text-", "border-") ?? "border-gray-200"} border-opacity-50`}>
-            <p className="text-xl font-bold">{roleCounts[role] ?? 0}</p>
-            <p className="text-xs mt-0.5 opacity-80">{label}</p>
-          </div>
-        ))}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setTab("active")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${tab === "active" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <Users className="w-4 h-4" /> Pengguna Aktif
+        </button>
+        <button
+          onClick={() => setTab("pending")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${tab === "pending" ? "bg-white shadow-sm text-gray-900" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <Clock className="w-4 h-4" /> Menunggu Persetujuan
+          {pendingUsers.length > 0 && (
+            <span className="ml-1 bg-amber-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">{pendingUsers.length}</span>
+          )}
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-green-600" />
-          <h2 className="font-semibold text-gray-800">Daftar Pengguna</h2>
-          <span className="ml-auto text-sm text-gray-400">{users.length} pengguna</span>
+      {tab === "active" && (
+        <>
+          {/* Role summary */}
+          <div className="grid grid-cols-5 gap-3">
+            {Object.entries(roleLabels).map(([role, label]) => (
+              <div key={role} className={`rounded-xl border p-3 text-center ${roleColors[role]?.replace("text-", "border-") ?? "border-gray-200"} border-opacity-50`}>
+                <p className="text-xl font-bold">{roleCounts[role] ?? 0}</p>
+                <p className="text-xs mt-0.5 opacity-80">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <Users className="w-5 h-5 text-green-600" />
+              <h2 className="font-semibold text-gray-800">Daftar Pengguna</h2>
+              <span className="ml-auto text-sm text-gray-400">{users.length} pengguna</span>
+            </div>
+            <DataTable data={users} columns={columns} isLoading={isLoading} searchPlaceholder="Cari nama atau email..." emptyMessage="Belum ada pengguna" />
+          </div>
+        </>
+      )}
+
+      {tab === "pending" && (
+        <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock className="w-5 h-5 text-amber-500" />
+            <h2 className="font-semibold text-gray-800">Pengguna Menunggu Persetujuan</h2>
+            <span className="ml-auto text-sm text-gray-400">{pendingUsers.length} pengguna</span>
+          </div>
+          {pendingUsers.length === 0 && !pendingLoading ? (
+            <p className="text-sm text-gray-400 text-center py-8">Tidak ada pengguna yang menunggu persetujuan</p>
+          ) : (
+            <DataTable data={pendingUsers} columns={pendingColumns} isLoading={pendingLoading} searchPlaceholder="Cari nama atau email..." emptyMessage="Tidak ada pengguna pending" />
+          )}
         </div>
-        <DataTable data={users} columns={columns} isLoading={isLoading} searchPlaceholder="Cari nama atau email..." emptyMessage="Belum ada pengguna" />
-      </div>
+      )}
 
       {/* ── Create Modal ── */}
       {isCreateOpen && (
@@ -330,6 +446,35 @@ export default function UsersPage() {
                 <button type="button" onClick={() => setEditingUser(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
                 <button type="submit" disabled={editMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
                   {editMutation.isPending ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Approve Modal ── */}
+      {approvingUser && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h3 className="text-lg font-semibold">Setujui Pengguna</h3>
+                <p className="text-sm text-gray-400 mt-0.5">{approvingUser.name}</p>
+              </div>
+              <button onClick={() => setApprovingUser(null)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={approveForm.handleSubmit(d => approveMutation.mutate({ id: approvingUser.id, role: d.role }))} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Assign Role *</label>
+                <select {...approveForm.register("role")} className={inputCls}>
+                  {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2 border-t border-gray-100">
+                <button type="button" onClick={() => setApprovingUser(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
+                <button type="submit" disabled={approveMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
+                  {approveMutation.isPending ? "Menyetujui..." : "Setujui"}
                 </button>
               </div>
             </form>

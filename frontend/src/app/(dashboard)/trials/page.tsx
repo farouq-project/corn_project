@@ -48,6 +48,7 @@ export default function TrialsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTrial, setEditingTrial] = useState<Trial | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const [selectedEnvIds, setSelectedEnvIds] = useState<number[]>([]);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -63,6 +64,11 @@ export default function TrialsPage() {
   const { data: locations } = useQuery({
     queryKey: ["locations-simple"],
     queryFn: () => api.get("/v1/locations?all=true").then((r) => r.data as Array<{ id: number; field_code: string; field_name: string }>),
+  });
+
+  const { data: environments } = useQuery({
+    queryKey: ["environments-simple"],
+    queryFn: () => api.get<{ data: Array<{ id: number; name: string; environment_code: string; location?: { field_name: string } }> }>("/v1/environments?per_page=200").then((r) => r.data.data),
   });
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormData>({
@@ -98,12 +104,14 @@ export default function TrialsPage() {
 
   const openCreate = () => {
     setEditingTrial(null);
+    setSelectedEnvIds([]);
     reset({ status: "planned", layout_design: "RCBD", replications: 3 });
     setIsModalOpen(true);
   };
 
   const openEdit = (t: Trial) => {
     setEditingTrial(t);
+    setSelectedEnvIds(t.environments?.map(e => e.id) ?? []);
     reset({
       trial_code: t.trial_code, trial_name: t.trial_name,
       season_id: t.season_id, location_id: t.location_id,
@@ -118,14 +126,18 @@ export default function TrialsPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingTrial(null);
+    setSelectedEnvIds([]);
     reset();
   };
 
+  const toggleEnv = (id: number) => setSelectedEnvIds(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
+
   const onSubmit = (data: FormData) => {
+    const payload = { ...data, environment_ids: selectedEnvIds };
     if (editingTrial) {
-      updateMutation.mutate({ id: editingTrial.id, data });
+      updateMutation.mutate({ id: editingTrial.id, data: payload });
     } else {
-      createMutation.mutate(data);
+      createMutation.mutate(payload as FormData);
     }
   };
 
@@ -330,6 +342,27 @@ export default function TrialsPage() {
                   </select>
                   {errors.location_id && <p className="text-red-500 text-xs mt-1">{errors.location_id.message}</p>}
                 </div>
+              </div>
+
+              {/* Multi-select environments (Kebun Percobaan) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Kebun Percobaan <span className="text-gray-400 font-normal text-xs">(opsional — bisa lebih dari satu)</span>
+                </label>
+                <div className="border border-gray-300 rounded-lg max-h-36 overflow-y-auto p-2 space-y-1 bg-white">
+                  {(environments ?? []).length === 0 ? (
+                    <p className="text-xs text-gray-400 px-1">Belum ada kebun percobaan</p>
+                  ) : (environments ?? []).map(env => (
+                    <label key={env.id} className={cn("flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer hover:bg-gray-50 text-sm transition", selectedEnvIds.includes(env.id) ? "bg-green-50 text-green-800" : "text-gray-700")}>
+                      <input type="checkbox" checked={selectedEnvIds.includes(env.id)} onChange={() => toggleEnv(env.id)} className="rounded border-gray-300 text-green-600" />
+                      <span className="flex-1">{env.name}</span>
+                      <span className="text-xs text-gray-400 font-mono">{env.environment_code}</span>
+                    </label>
+                  ))}
+                </div>
+                {selectedEnvIds.length > 0 && (
+                  <p className="text-xs text-green-600 mt-1">{selectedEnvIds.length} kebun percobaan terpilih</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

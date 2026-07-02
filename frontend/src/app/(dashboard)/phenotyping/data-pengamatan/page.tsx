@@ -496,7 +496,7 @@ export default function DataPengamatanPage() {
                     <div key={group} className="space-y-1">
                       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{group}</p>
                       {chars.map(c => (
-                        <label key={c.code} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <label key={c.code} title={`Kode: ${c.code}${c.unit ? ` · Satuan: ${c.unit}` : ""}`} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 cursor-pointer">
                           <input type="checkbox" checked={selectedCharCodes.has(c.code)}
                             onChange={e => {
                               const next = new Set(selectedCharCodes);
@@ -505,7 +505,8 @@ export default function DataPengamatanPage() {
                             }}
                             className="accent-green-600 w-4 h-4" />
                           <span className="flex-1 text-sm text-gray-800">{c.name}</span>
-                          <span className="text-xs text-gray-400">{c.unit ? `(${c.unit})` : c.code}</span>
+                          <span className="text-xs font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{c.code}</span>
+                          {c.unit && <span className="text-xs text-gray-400">({c.unit})</span>}
                         </label>
                       ))}
                     </div>

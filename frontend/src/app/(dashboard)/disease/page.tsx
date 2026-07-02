@@ -35,7 +35,7 @@ const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Nu
 const evalSchema = z.object({
   trial_id: z.preprocess(Number, z.number()),
   environment_id: z.preprocess(Number, z.number()),
-  disease_type_id: z.preprocess(Number, z.number()),
+  disease_type_id: z.preprocess(toOptionalNumber, z.number().optional()),
   days_after_planting: z.preprocess(toOptionalNumber, z.number().optional()),
   evaluation_date: z.string(),
   growth_stage: z.string().optional(),
@@ -49,6 +49,7 @@ interface DiseaseEval {
   trial?: { trial_name: string; trial_code: string };
   environment?: { location?: { field_name: string }; season?: { season_name: string } };
   diseaseType?: { disease_name: string; disease_code: string };
+  disease_type_ids?: number[];
   evaluation_date: string; growth_stage?: string;
   status: string; scores_count: number;
   weather_notes?: string; general_observations?: string;
@@ -70,6 +71,7 @@ export default function DiseasePage() {
   const [selectedTrialId, setSelectedTrialId] = useState("");
   const [isAddTypeOpen, setIsAddTypeOpen] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
+  const [selectedDiseaseTypeIds, setSelectedDiseaseTypeIds] = useState<number[]>([]);
   const queryClient = useQueryClient();
 
   const { data: evaluations, isLoading } = useQuery({
@@ -131,11 +133,16 @@ export default function DiseasePage() {
   const trialWatch = watch("trial_id");
 
   const createMutation = useMutation({
-    mutationFn: (d: z.infer<typeof evalSchema>) => api.post("/v1/disease/evaluations", d),
+    mutationFn: (d: z.infer<typeof evalSchema>) => api.post("/v1/disease/evaluations", {
+      ...d,
+      disease_type_ids: selectedDiseaseTypeIds.length > 0 ? selectedDiseaseTypeIds : undefined,
+      disease_type_id: selectedDiseaseTypeIds[0] ?? d.disease_type_id,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["disease-evaluations"] });
       toast.success("Sesi evaluasi dibuat");
       setIsModalOpen(false);
+      setSelectedDiseaseTypeIds([]);
       reset();
     },
     onError: e => toast.error(getApiErrorMessage(e)),
@@ -186,10 +193,11 @@ export default function DiseasePage() {
 
   const openEdit = (ev: DiseaseEval) => {
     setEditingEval(ev);
+    setSelectedDiseaseTypeIds(ev.disease_type_ids ?? (ev.diseaseType ? [] : []));
     reset({
       trial_id: ev.trial ? (trials?.find(t => t.trial_code === ev.trial?.trial_code)?.id ?? 0) : 0,
       environment_id: 0,
-      disease_type_id: 0,
+      disease_type_id: undefined,
       evaluation_date: ev.evaluation_date,
       weather_notes: ev.weather_notes ?? "",
       general_observations: ev.general_observations ?? "",
@@ -220,11 +228,30 @@ export default function DiseasePage() {
     {
       header: "Penyakit",
       id: "disease",
-      cell: ({ row }) => (
-        <span className="text-sm font-semibold text-purple-700">
-          {row.original.diseaseType?.disease_name ?? "—"}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const typeIds = row.original.disease_type_ids;
+        const allTypes = (diseaseTypes as unknown as DiseaseType[] | undefined) ?? [];
+        if (typeIds && typeIds.length > 1) {
+          return (
+            <div className="flex flex-wrap gap-1 max-w-[200px]">
+              {typeIds.slice(0, 2).map(id => {
+                const dt = allTypes.find(t => t.id === id);
+                return dt ? (
+                  <span key={id} className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">
+                    {dt.disease_name}
+                  </span>
+                ) : null;
+              })}
+              {typeIds.length > 2 && <span className="text-xs text-gray-400">+{typeIds.length - 2}</span>}
+            </div>
+          );
+        }
+        return (
+          <span className="text-sm font-semibold text-purple-700">
+            {row.original.diseaseType?.disease_name ?? "—"}
+          </span>
+        );
+      },
     },
     {
       header: "Tanggal",
@@ -585,14 +612,26 @@ export default function DiseasePage() {
                         </div>
                       </div>
                     )}
-                    <select {...register("disease_type_id")}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
-                      <option value="">-- Pilih Jenis Penyakit --</option>
-                      {(diseaseTypes as unknown as DiseaseType[] | undefined)?.map(dt => (
-                        <option key={dt.id} value={dt.id}>{dt.disease_name}</option>
-                      ))}
-                    </select>
-                    {errors.disease_type_id && <p className="text-red-500 text-xs mt-1">{errors.disease_type_id.message}</p>}
+                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-50 max-h-40 overflow-y-auto">
+                      {((diseaseTypes as unknown as DiseaseType[] | undefined) ?? []).map(dt => {
+                        const checked = selectedDiseaseTypeIds.includes(dt.id);
+                        return (
+                          <label key={dt.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-purple-50/40 transition">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setSelectedDiseaseTypeIds(prev =>
+                                checked ? prev.filter(id => id !== dt.id) : [...prev, dt.id]
+                              )}
+                              className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                            />
+                            <span className="text-sm text-gray-800 flex-1">{dt.disease_name}</span>
+                            <span className="text-xs text-gray-400 font-mono">{dt.disease_code}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    {selectedDiseaseTypeIds.length === 0 && <p className="text-amber-500 text-xs mt-1">Pilih minimal satu jenis penyakit</p>}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

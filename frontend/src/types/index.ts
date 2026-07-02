@@ -180,6 +180,7 @@ export interface Trial {
   principal_researcher?: User;
   genotypes?: Genotype[];
   researchers?: User[];
+  environments?: Environment[];
   genotypes_count?: number;
   total_expense?: number;
   phenotype_completion_rate?: number;

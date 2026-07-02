@@ -10,6 +10,7 @@ import { formatDate, cn } from "@/lib/utils";
 import { getApiErrorMessage } from "@/lib/axios";
 
 const CATEGORY_COLORS: Record<string, string> = {
+  research_plan: "bg-green-50 text-green-700 border-green-200",
   sop: "bg-blue-50 text-blue-700 border-blue-200",
   rainfall_data: "bg-cyan-50 text-cyan-700 border-cyan-200",
   soil_analysis: "bg-amber-50 text-amber-700 border-amber-200",

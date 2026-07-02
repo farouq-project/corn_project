@@ -60,9 +60,23 @@ const budgetSchema = z.object({
   funding_source: z.string().optional(),
   total_amount: z.preprocess(Number, z.number().min(1, "Jumlah anggaran wajib diisi")),
   start_date: z.string().min(1),
-  end_date: z.string().min(1),
+  end_date: z.string().optional(),
 });
 type BudgetForm = z.infer<typeof budgetSchema>;
+
+function useBudgetNameMemory() {
+  const [saved, setSaved] = useState<string[]>([]);
+  useEffect(() => {
+    try { setSaved(JSON.parse(localStorage.getItem("budget_names") ?? "[]")); } catch {}
+  }, []);
+  const remember = (v: string) => {
+    if (!v.trim() || saved.includes(v.trim())) return;
+    const next = [v.trim(), ...saved].slice(0, 20);
+    setSaved(next);
+    localStorage.setItem("budget_names", JSON.stringify(next));
+  };
+  return { budgetNameSuggestions: saved, rememberBudgetName: remember };
+}
 
 const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
 
@@ -83,6 +97,8 @@ export default function FinancePage() {
   const queryClient = useQueryClient();
   const { suggestions: categorySuggestions, remember: rememberCategory } = useCategoryMemory();
   const { titleSuggestions, rememberTitle } = useExpenseTitleMemory();
+  const { budgetNameSuggestions, rememberBudgetName } = useBudgetNameMemory();
+  const [budgetId, setBudgetId] = useState<string>("");
 
   // Multi-row expense form state
   const [trialId, setTrialId] = useState<string>("");
@@ -162,7 +178,7 @@ export default function FinancePage() {
     setEditExpenseTitle(exp.title);
     setEditExpenseVendor((exp as Expense & { vendor?: string }).vendor ?? "");
     setEditExpenseAmount(String(exp.amount));
-    setEditExpenseDate((exp as Expense & { payment_date?: string }).payment_date ?? "");
+    setEditExpenseDate(((exp as Expense & { payment_date?: string }).payment_date ?? "").slice(0, 10));
     setIsExpenseEditOpen(true);
   };
 
@@ -174,7 +190,7 @@ export default function FinancePage() {
 
   const createBudgetMutation = useMutation({
     mutationFn: (data: BudgetForm) => api.post("/v1/finance/budgets", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); toast.success("Anggaran dibuat"); setIsBudgetModalOpen(false); budgetForm.reset(); setBudgetTotalDisplay(""); },
+    onSuccess: (_, vars) => { queryClient.invalidateQueries({ queryKey: ["budgets"] }); queryClient.invalidateQueries({ queryKey: ["finance-dashboard"] }); rememberBudgetName(vars.budget_name); toast.success("Anggaran dibuat"); setIsBudgetModalOpen(false); budgetForm.reset(); setBudgetTotalDisplay(""); },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
@@ -215,6 +231,7 @@ export default function FinancePage() {
     setReceiptUrls([]);
     setCategoryName("");
     setTrialId(trialFilter);
+    setBudgetId("");
     setPaymentDate(new Date().toISOString().slice(0, 10));
     setPaymentMethod("");
   };
@@ -227,6 +244,7 @@ export default function FinancePage() {
     validRows.forEach(r => rememberTitle(r.title.trim()));
     batchMutation.mutate({
       trial_id: trialId || null,
+      budget_id: budgetId || null,
       payment_date: paymentDate,
       payment_method: paymentMethod || null,
       category_name: categoryName || null,
@@ -383,13 +401,37 @@ export default function FinancePage() {
         ) : null;
       })()}
 
-      {/* Summary Card — single total only */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div><p className="text-xs text-gray-500">Total Pengeluaran</p><p className="text-2xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</p></div>
-          <div className="p-2.5 rounded-lg bg-blue-50"><Wallet className="w-5 h-5 text-blue-600" /></div>
-        </div>
-      </div>
+      {/* Summary Cards — always visible */}
+      {(() => {
+        const totalPemasukan = budgets.reduce((s, b) => s + b.total_amount, 0);
+        const totalKeluar = expenses.filter(e => e.approval_status !== "rejected").reduce((s, e) => s + e.amount, 0);
+        const sisaDana = totalPemasukan - totalKeluar;
+        const pct = totalPemasukan > 0 ? Math.min(100, (totalKeluar / totalPemasukan) * 100) : 0;
+        return (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div><p className="text-xs text-gray-500">Total Pengeluaran</p><p className="text-xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</p></div>
+                <div className="p-2.5 rounded-lg bg-blue-50"><Wallet className="w-5 h-5 text-blue-600" /></div>
+              </div>
+            </div>
+            <div className="bg-blue-50 rounded-xl border border-blue-100 p-5 shadow-sm">
+              <p className="text-xs text-blue-600 font-medium mb-1">Total Pemasukan</p>
+              <p className="text-xl font-bold text-blue-800">{formatCurrency(totalPemasukan)}</p>
+              <p className="text-xs text-blue-400 mt-0.5">{budgets.length} anggaran aktif</p>
+            </div>
+            <div className={`rounded-xl border p-5 shadow-sm ${sisaDana < 0 ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
+              <p className={`text-xs font-medium mb-1 ${sisaDana < 0 ? "text-red-600" : "text-green-600"}`}>Sisa Dana</p>
+              <p className={`text-xl font-bold ${sisaDana < 0 ? "text-red-800" : "text-green-800"}`}>{formatCurrency(Math.abs(sisaDana))}{sisaDana < 0 ? " (defisit)" : ""}</p>
+              {totalPemasukan > 0 && (
+                <div className="mt-2 w-full h-1.5 bg-white/60 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Budget utilization bars */}
       {(financeDashboard?.budgetUtilization ?? []).length > 0 && (
@@ -433,37 +475,15 @@ export default function FinancePage() {
               searchPlaceholder="Cari pengeluaran..." emptyMessage="Belum ada pengeluaran" />
           )}
           {activeTab === "budgets" && (() => {
-            const totalPemasukan = budgets.reduce((s, b) => s + b.total_amount, 0);
-            const totalKeluar = expenses.filter(e => e.approval_status !== "rejected").reduce((s, e) => s + e.amount, 0);
-            const sisaDana = totalPemasukan - totalKeluar;
-            const pct = totalPemasukan > 0 ? Math.min(100, (totalKeluar / totalPemasukan) * 100) : 0;
             return (
             <>
-              {/* Total Pemasukan + Sisa Dana */}
-              {totalPemasukan > 0 && (
-                <div className="grid grid-cols-2 gap-4 mb-5">
-                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                    <p className="text-xs text-blue-600 font-medium mb-1">Total Pemasukan</p>
-                    <p className="text-xl font-bold text-blue-800">{formatCurrency(totalPemasukan)}</p>
-                    <p className="text-xs text-blue-400 mt-0.5">Total anggaran tersedia</p>
-                  </div>
-                  <div className={`rounded-xl p-4 border ${sisaDana < 0 ? "bg-red-50 border-red-100" : "bg-green-50 border-green-100"}`}>
-                    <p className={`text-xs font-medium mb-1 ${sisaDana < 0 ? "text-red-600" : "text-green-600"}`}>Sisa Dana</p>
-                    <p className={`text-xl font-bold ${sisaDana < 0 ? "text-red-800" : "text-green-800"}`}>{formatCurrency(Math.abs(sisaDana))}{sisaDana < 0 ? " (defisit)" : ""}</p>
-                    <div className="mt-2 w-full h-2 bg-white/60 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${pct > 90 ? "bg-red-500" : pct > 70 ? "bg-yellow-500" : "bg-green-500"}`} style={{ width: `${pct}%` }} />
-                    </div>
-                    <p className="text-xs mt-0.5 opacity-70">{pct.toFixed(1)}% terpakai</p>
-                  </div>
-                </div>
-              )}
               <DataTable data={budgets} isLoading={false} emptyMessage="Belum ada anggaran"
                 columns={[
                   { header: "Kode", accessorKey: "budget_code", cell: ({ getValue }) => <span className="font-mono text-xs font-semibold text-blue-700">{getValue() as string}</span> },
                   { header: "Nama Anggaran", accessorKey: "budget_name" },
                   { header: "Sumber Dana", accessorKey: "funding_source" },
                   { header: "Total", accessorKey: "total_amount", cell: ({ getValue }) => <span className="font-semibold">{formatCurrency(getValue() as number)}</span> },
-                  { header: "Masa Berlaku", id: "period", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.start_date)} – {formatDate(row.original.end_date)}</span> },
+                  { header: "Masa Berlaku", id: "period", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.start_date)}{row.original.end_date ? ` – ${formatDate(row.original.end_date)}` : ""}</span> },
                   { header: "Status", accessorKey: "status", cell: ({ getValue }) => <StatusBadge status={getValue() as string} /> },
                   { header: "Aksi", id: "budgetAct", cell: ({ row }) => (
                     <div className="flex items-center gap-1">
@@ -498,9 +518,16 @@ export default function FinancePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Pembayaran *</label>
-                  <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className={inputCls} />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Anggaran <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                  <select value={budgetId} onChange={e => setBudgetId(e.target.value)} className={inputCls}>
+                    <option value="">-- Pilih Anggaran --</option>
+                    {budgets.map(b => <option key={b.id} value={b.id}>{b.budget_name}</option>)}
+                  </select>
                 </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal Pembayaran *</label>
+                <input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className={inputCls} />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -695,7 +722,10 @@ export default function FinancePage() {
             <form onSubmit={budgetForm.handleSubmit(d => editingBudget ? updateBudgetMutation.mutate({ id: editingBudget.id, data: d }) : createBudgetMutation.mutate(d))} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Anggaran *</label>
-                <input {...budgetForm.register("budget_name")} className={inputCls} placeholder="Anggaran Penelitian MH2026" />
+                <input {...budgetForm.register("budget_name")} list="budget-name-suggestions" className={inputCls} placeholder="Anggaran Penelitian MH2026" />
+                <datalist id="budget-name-suggestions">
+                  {budgetNameSuggestions.map(s => <option key={s} value={s} />)}
+                </datalist>
                 {budgetForm.formState.errors.budget_name && <p className="text-red-500 text-xs mt-1">{budgetForm.formState.errors.budget_name.message}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -727,7 +757,7 @@ export default function FinancePage() {
                   <input {...budgetForm.register("start_date")} type="date" className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Berakhir *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Berakhir <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
                   <input {...budgetForm.register("end_date")} type="date" className={inputCls} />
                 </div>
               </div>

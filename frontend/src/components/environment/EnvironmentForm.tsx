@@ -188,15 +188,14 @@ export function EnvironmentForm({ defaultValues, seasons, onSubmit, onCancel, is
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Kode — editable only when editing existing Lokasi */}
-      {editMode && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Kode Lokasi</label>
-          <input {...register("environment_code")} placeholder="contoh: KEBUN-26"
-            className={`${inputCls} font-mono`} />
-          <p className="text-xs text-gray-400 mt-0.5">Kode unik untuk identifikasi lokasi dalam import dan referensi</p>
-        </div>
-      )}
+      {/* Kode Lokasi — always editable, auto-generated if left blank */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Kode Lokasi <span className="text-gray-400 font-normal text-xs">(opsional — dibuat otomatis jika kosong)</span>
+        </label>
+        <input {...register("environment_code")} placeholder="contoh: KEBUN-26"
+          className={`${inputCls} font-mono`} />
+      </div>
 
       {/* Nama Kebun Percobaan */}
       <div>

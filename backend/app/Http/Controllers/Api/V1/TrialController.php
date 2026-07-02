@@ -27,7 +27,7 @@ class TrialController extends Controller
             return response()->json($query->get(['id', 'trial_code', 'trial_name', 'status']));
         }
 
-        return response()->json($query->withCount('genotypes')->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20));
+        return response()->json($query->with('environments')->withCount('genotypes')->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20));
     }
 
     public function store(Request $request): JsonResponse
@@ -36,6 +36,8 @@ class TrialController extends Controller
             'trial_code' => ['required', 'string', 'max:30', 'unique:trials'],
             'trial_name' => ['required', 'string', 'max:255'],
             'environment_id' => ['nullable', 'exists:environments,id'],
+            'environment_ids' => ['nullable', 'array'],
+            'environment_ids.*' => ['exists:environments,id'],
             'environment_condition_id' => ['nullable', 'exists:environment_conditions,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
@@ -52,28 +54,34 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
-        // Derive location_id and season_id from environment if provided
-        $environmentId = $data['environment_id'] ?? null;
-        if ($environmentId) {
-            $env = \App\Models\Environment::find($environmentId);
+        // Collect all environment IDs to link (merge single + multi)
+        $envIds = collect($data['environment_ids'] ?? []);
+        if (!empty($data['environment_id'])) {
+            $envIds = $envIds->merge([$data['environment_id']])->unique()->values();
+        }
+        $firstEnvId = $envIds->first();
+
+        // Derive location_id and season_id from primary environment if provided
+        if ($firstEnvId) {
+            $env = \App\Models\Environment::find($firstEnvId);
             if ($env) {
                 $data['location_id'] = $data['location_id'] ?? $env->location_id;
                 $data['season_id'] = $data['season_id'] ?? $env->season_id;
             }
         }
 
+        unset($data['environment_ids']);
         $data['created_by'] = $request->user()->id;
         if (empty($data['principal_researcher_id'])) {
             $data['principal_researcher_id'] = $request->user()->id;
         }
 
-        // environment_id column exists on trials table — stored directly
         $trial = Trial::create($data);
 
-        // Also link via trial_environments junction so environment filter works
-        if ($environmentId) {
+        // Sync all environments via junction table
+        foreach ($envIds as $envId) {
             TrialEnvironment::firstOrCreate(
-                ['trial_id' => $trial->id, 'environment_id' => $environmentId],
+                ['trial_id' => $trial->id, 'environment_id' => $envId],
                 ['status' => 'active']
             );
         }
@@ -87,7 +95,7 @@ class TrialController extends Controller
     {
         return response()->json($trial->load([
             'season', 'location', 'trialType', 'principalResearcher',
-            'genotypes', 'researchers',
+            'genotypes', 'researchers', 'environments',
         ])->append(['total_expense', 'phenotype_completion_rate']));
     }
 
@@ -96,6 +104,8 @@ class TrialController extends Controller
         $data = $request->validate([
             'trial_name' => ['sometimes', 'string'],
             'environment_id' => ['nullable', 'exists:environments,id'],
+            'environment_ids' => ['nullable', 'array'],
+            'environment_ids.*' => ['exists:environments,id'],
             'environment_condition_id' => ['nullable', 'exists:environment_conditions,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
@@ -111,18 +121,28 @@ class TrialController extends Controller
             'principal_researcher_id' => ['nullable', 'exists:users,id'],
         ]);
 
-        $environmentId = $data['environment_id'] ?? null;
+        // Collect all environment IDs to sync
+        $envIds = collect($data['environment_ids'] ?? []);
+        if (!empty($data['environment_id'])) {
+            $envIds = $envIds->merge([$data['environment_id']])->unique()->values();
+        }
+        unset($data['environment_ids']);
 
         $original = $trial->getAttributes();
-        // environment_id is stored directly on trials table
         $trial->update($data);
 
-        // Also sync via trial_environments junction so environment filter works
-        if ($environmentId) {
-            TrialEnvironment::firstOrCreate(
-                ['trial_id' => $trial->id, 'environment_id' => $environmentId],
-                ['status' => 'active']
-            );
+        // Sync junction table if environment_ids were provided
+        if ($envIds->isNotEmpty()) {
+            // Remove environments no longer in the list, add new ones
+            TrialEnvironment::where('trial_id', $trial->id)
+                ->whereNotIn('environment_id', $envIds->toArray())
+                ->delete();
+            foreach ($envIds as $envId) {
+                TrialEnvironment::firstOrCreate(
+                    ['trial_id' => $trial->id, 'environment_id' => $envId],
+                    ['status' => 'active']
+                );
+            }
         }
 
         AuditService::logUpdated($trial, $original);

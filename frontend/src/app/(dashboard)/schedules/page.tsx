@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, CalendarClock, AlertTriangle, CheckCircle2, Clock, X, Edit2, Calendar, List, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, CalendarClock, AlertTriangle, CheckCircle2, Clock, X, Edit2, Calendar, List, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import api from "@/lib/axios";
@@ -120,6 +120,16 @@ export default function SchedulesPage() {
       setIsModalOpen(false);
       setEditingSchedule(null);
       reset();
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/schedules/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      toast.success("Jadwal dihapus");
+      setDetailSchedule(null);
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
@@ -250,6 +260,11 @@ export default function SchedulesPage() {
                           className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition" title="Edit">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
+                        <button
+                          onClick={() => { if (confirm(`Hapus jadwal "${schedule.schedule_title}"?`)) deleteMutation.mutate(schedule.id); }}
+                          className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                         {schedule.status === "pending" && (
                           <button
                             onClick={() => completeMutation.mutate({ id: schedule.id, rate: 100 })}
@@ -312,8 +327,8 @@ export default function SchedulesPage() {
                     isToday ? "bg-green-600 text-white" : "text-gray-700")}>
                     {day}
                   </div>
-                  <div className="space-y-0.5 overflow-hidden">
-                    {daySchedules.slice(0, 3).map(s => (
+                  <div className="space-y-0.5 max-h-[64px] overflow-y-auto">
+                    {daySchedules.map(s => (
                       <button key={s.id} onClick={() => setDetailSchedule(s)}
                         className={cn("w-full text-left text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 hover:opacity-80 transition truncate",
                           s.status === "completed" ? "bg-green-100 text-green-800" :
@@ -324,12 +339,6 @@ export default function SchedulesPage() {
                         <span className="truncate">{s.schedule_title}</span>
                       </button>
                     ))}
-                    {daySchedules.length > 3 && (
-                      <button onClick={() => setDetailSchedule(daySchedules[0])}
-                        className="text-[10px] text-gray-400 pl-1.5 hover:text-gray-600">
-                        +{daySchedules.length - 3} lainnya
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -393,8 +402,14 @@ export default function SchedulesPage() {
               )}
               <div className="flex gap-2 pt-2">
                 <button onClick={() => { setDetailSchedule(null); openEdit(detailSchedule); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">
+                  className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">
                   <Edit2 className="w-3.5 h-3.5" /> Edit
+                </button>
+                <button
+                  onClick={() => { if (confirm(`Hapus jadwal "${detailSchedule.schedule_title}"?`)) deleteMutation.mutate(detailSchedule.id); }}
+                  disabled={deleteMutation.isPending}
+                  className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 text-red-500 rounded-lg text-sm hover:bg-red-50 transition">
+                  <Trash2 className="w-3.5 h-3.5" /> Hapus
                 </button>
                 {detailSchedule.status === "pending" && (
                   <button onClick={() => { completeMutation.mutate({ id: detailSchedule.id, rate: 100 }); setDetailSchedule(null); }}

@@ -11,7 +11,7 @@ class DiseaseEvaluation extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'evaluation_code', 'trial_id', 'environment_id', 'disease_type_id',
+        'evaluation_code', 'trial_id', 'environment_id', 'disease_type_id', 'disease_type_ids',
         'evaluation_date', 'growth_stage', 'days_after_planting',
         'weather_notes', 'general_observations', 'photos',
         'status', 'evaluator_id', 'approved_by', 'approved_at',
@@ -21,6 +21,7 @@ class DiseaseEvaluation extends Model
         'evaluation_date' => 'date',
         'approved_at' => 'datetime',
         'photos' => 'array',
+        'disease_type_ids' => 'array',
     ];
 
     public function trial()

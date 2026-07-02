@@ -33,6 +33,7 @@ Route::prefix('v1')->group(function () {
     // Public auth routes
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
+        Route::post('register', [AuthController::class, 'register']);
     });
 
     // Public downloads (no auth needed — static templates only)
@@ -82,6 +83,9 @@ Route::prefix('v1')->group(function () {
         Route::get('dashboard/analytics', [DashboardController::class, 'analytics']);
 
         // User Management
+        Route::get('users/pending', [UserController::class, 'pending']);
+        Route::post('users/{user}/approve', [UserController::class, 'approve']);
+        Route::post('users/{user}/reject', [UserController::class, 'reject']);
         Route::apiResource('users', UserController::class);
         Route::post('users/{user}/reset-password', [UserController::class, 'resetPassword']);
 
@@ -192,6 +196,7 @@ Route::prefix('v1')->group(function () {
             Route::get('/', [ObservationScheduleController::class, 'index']);
             Route::post('/', [ObservationScheduleController::class, 'store']);
             Route::put('{schedule}', [ObservationScheduleController::class, 'update']);
+            Route::delete('{schedule}', [ObservationScheduleController::class, 'destroy']);
             Route::get('calendar', [ObservationScheduleController::class, 'calendarView']);
             Route::get('missing-data-alerts', [ObservationScheduleController::class, 'missingDataAlerts']);
         });

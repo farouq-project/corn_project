@@ -18,7 +18,7 @@ class MediaController extends Controller
     {
         $request->validate([
             'file' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:10240'],
-            'folder' => ['nullable', 'string', 'in:receipts,activity-photos,documents'],
+            'folder' => ['nullable', 'string', 'max:50'],
         ]);
 
         $folder = 'uploads/' . ($request->folder ?? 'general');

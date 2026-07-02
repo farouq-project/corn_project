@@ -59,13 +59,20 @@ class DiseaseController extends Controller
         $data = $request->validate([
             'trial_id' => ['required', 'exists:trials,id'],
             'environment_id' => ['required', 'exists:environments,id'],
-            'disease_type_id' => ['required', 'exists:disease_types,id'],
+            'disease_type_ids' => ['nullable', 'array'],
+            'disease_type_ids.*' => ['exists:disease_types,id'],
+            'disease_type_id' => ['nullable', 'exists:disease_types,id'],
             'evaluation_date' => ['required', 'date'],
             'growth_stage' => ['nullable', 'string'],
             'days_after_planting' => ['nullable', 'integer'],
             'weather_notes' => ['nullable', 'string'],
             'general_observations' => ['nullable', 'string'],
         ]);
+
+        // Support both single and multi-select; normalise to both fields
+        $ids = $data['disease_type_ids'] ?? ($data['disease_type_id'] ? [$data['disease_type_id']] : []);
+        $data['disease_type_ids'] = $ids ?: null;
+        $data['disease_type_id'] = $ids[0] ?? null;
 
         $data['evaluation_code'] = 'DE-' . date('Ymd') . '-' . strtoupper(Str::random(6));
         $data['evaluator_id'] = $request->user()->id;

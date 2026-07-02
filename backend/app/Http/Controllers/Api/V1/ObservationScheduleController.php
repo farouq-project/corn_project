@@ -71,6 +71,12 @@ class ObservationScheduleController extends Controller
         return response()->json($schedule->load(['assignee']));
     }
 
+    public function destroy(ObservationSchedule $schedule): JsonResponse
+    {
+        $schedule->delete();
+        return response()->json(null, 204);
+    }
+
     public function calendarView(Request $request): JsonResponse
     {
         $request->validate([

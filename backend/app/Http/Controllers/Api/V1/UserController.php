@@ -90,6 +90,39 @@ class UserController extends Controller
         return response()->json(null, 204);
     }
 
+    public function pending(Request $request): JsonResponse
+    {
+        $paginated = User::with('roles')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->paginate($request->per_page ?? 20);
+
+        $paginated->getCollection()->transform(fn($u) => $this->formatUser($u));
+
+        return response()->json($paginated);
+    }
+
+    public function approve(Request $request, User $user): JsonResponse
+    {
+        $data = $request->validate(['role' => ['required', 'string', 'exists:roles,name']]);
+
+        $original = $user->getAttributes();
+        $user->update(['status' => 'active']);
+        $user->syncRoles([$data['role']]);
+        AuditService::logUpdated($user, $original);
+
+        return response()->json(['message' => 'Pengguna berhasil disetujui.', 'user' => $this->formatUser($user)]);
+    }
+
+    public function reject(User $user): JsonResponse
+    {
+        $original = $user->getAttributes();
+        $user->update(['status' => 'inactive']);
+        AuditService::logUpdated($user, $original);
+
+        return response()->json(['message' => 'Pengguna berhasil ditolak.']);
+    }
+
     public function resetPassword(Request $request, User $user): JsonResponse
     {
         $data = $request->validate([

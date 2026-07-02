@@ -13,6 +13,26 @@ use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
+    public function register(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'unique:users,email'],
+            'password' => ['required', 'confirmed', Password::min(8)],
+        ]);
+
+        $user = User::create([
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'password' => Hash::make($data['password']),
+            'status' => 'pending',
+        ]);
+
+        AuditService::logCreated($user);
+
+        return response()->json(['message' => 'Registrasi berhasil. Akun Anda menunggu persetujuan admin.'], 201);
+    }
+
     public function login(Request $request): JsonResponse
     {
         $credentials = $request->validate([
