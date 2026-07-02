@@ -68,6 +68,8 @@ export default function DiseasePage() {
   const [selectedEval, setSelectedEval] = useState<DiseaseEval | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedTrialId, setSelectedTrialId] = useState("");
+  const [isAddTypeOpen, setIsAddTypeOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
   const queryClient = useQueryClient();
 
   const { data: evaluations, isLoading } = useQuery({
@@ -155,6 +157,18 @@ export default function DiseasePage() {
   const approveMutation = useMutation({
     mutationFn: (id: number) => api.post(`/v1/disease/evaluations/${id}/approve`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["disease-evaluations"] }); toast.success("Disetujui"); },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
+  const addTypeMutation = useMutation({
+    mutationFn: (name: string) => api.post<DiseaseType>("/v1/disease/types", { disease_name: name }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["disease-types"] });
+      setValue("disease_type_id", res.data.id);
+      setNewTypeName("");
+      setIsAddTypeOpen(false);
+      toast.success("Jenis penyakit ditambahkan");
+    },
     onError: e => toast.error(getApiErrorMessage(e)),
   });
 
@@ -549,18 +563,36 @@ export default function DiseasePage() {
               {!editingEval && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Jenis Penyakit *</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(diseaseTypes as unknown as DiseaseType[] | undefined)?.map(dt => (
-                        <label key={dt.id} className="cursor-pointer">
-                          <input {...register("disease_type_id")} type="radio" value={dt.id} className="sr-only" />
-                          <div className="border border-gray-200 rounded-lg p-2.5 hover:border-purple-400 hover:bg-purple-50 transition text-sm [&:has(input:checked)]:border-purple-500 [&:has(input:checked)]:bg-purple-50">
-                            <p className="font-semibold text-gray-800">{dt.disease_name}</p>
-                            <p className="text-xs text-gray-400 font-mono">{dt.disease_code}</p>
-                          </div>
-                        </label>
-                      ))}
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">Jenis Penyakit *</label>
+                      <button type="button" onClick={() => setIsAddTypeOpen(v => !v)}
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-700 transition">
+                        <Plus className="w-3 h-3" /> Tambah Jenis
+                      </button>
                     </div>
+                    {isAddTypeOpen && (
+                      <div className="mb-2 p-3 border border-purple-200 rounded-lg bg-purple-50/30 space-y-2">
+                        <input value={newTypeName} onChange={e => setNewTypeName(e.target.value)}
+                          placeholder="Nama jenis penyakit (mis. Fusarium Wilt)"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => { setIsAddTypeOpen(false); setNewTypeName(""); }}
+                            className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg hover:bg-gray-50">Batal</button>
+                          <button type="button" disabled={addTypeMutation.isPending || !newTypeName.trim()}
+                            onClick={() => addTypeMutation.mutate(newTypeName.trim())}
+                            className="px-3 py-1.5 text-xs bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                            {addTypeMutation.isPending ? "Menyimpan..." : "Tambah"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <select {...register("disease_type_id")}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500">
+                      <option value="">-- Pilih Jenis Penyakit --</option>
+                      {(diseaseTypes as unknown as DiseaseType[] | undefined)?.map(dt => (
+                        <option key={dt.id} value={dt.id}>{dt.disease_name}</option>
+                      ))}
+                    </select>
                     {errors.disease_type_id && <p className="text-red-500 text-xs mt-1">{errors.disease_type_id.message}</p>}
                   </div>
 

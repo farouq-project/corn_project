@@ -29,7 +29,7 @@ class ResearchDocumentController extends Controller
     {
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'],
-            'category' => ['required', 'in:sop,rainfall_data,soil_analysis,genotype_list,field_documentation,harvest_report,statistical_output,variety_release,financial,protocol,other'],
+            'category' => ['required', 'in:sop,rainfall_data,soil_analysis,genotype_list,field_documentation,harvest_report,statistical_output,variety_release,financial,kontrak,protocol,other'],
             'trial_id' => ['nullable', 'exists:trials,id'],
             'environment_id' => ['nullable', 'exists:environments,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
@@ -93,6 +93,7 @@ class ResearchDocumentController extends Controller
             ['code' => 'statistical_output', 'label' => 'Output Statistik'],
             ['code' => 'variety_release', 'label' => 'Pelepasan Varietas'],
             ['code' => 'financial', 'label' => 'Keuangan'],
+            ['code' => 'kontrak', 'label' => 'Kontrak'],
             ['code' => 'protocol', 'label' => 'Protokol Penelitian'],
             ['code' => 'other', 'label' => 'Lainnya'],
         ];

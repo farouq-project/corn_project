@@ -37,6 +37,20 @@ function useCategoryMemory() {
   return { suggestions: [...PRESET_CATEGORIES, ...saved.filter(s => !PRESET_CATEGORIES.includes(s))], remember };
 }
 
+function useExpenseTitleMemory() {
+  const [saved, setSaved] = useState<string[]>([]);
+  useEffect(() => {
+    try { setSaved(JSON.parse(localStorage.getItem("expense_titles") ?? "[]")); } catch {}
+  }, []);
+  const remember = (v: string) => {
+    if (!v.trim() || saved.includes(v.trim())) return;
+    const next = [v.trim(), ...saved].slice(0, 30);
+    setSaved(next);
+    localStorage.setItem("expense_titles", JSON.stringify(next));
+  };
+  return { titleSuggestions: saved, rememberTitle: remember };
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 interface ExpenseRow { title: string; vendor: string; amount: string; description: string; }
@@ -68,6 +82,7 @@ export default function FinancePage() {
   const [editExpenseDate, setEditExpenseDate] = useState("");
   const queryClient = useQueryClient();
   const { suggestions: categorySuggestions, remember: rememberCategory } = useCategoryMemory();
+  const { titleSuggestions, rememberTitle } = useExpenseTitleMemory();
 
   // Multi-row expense form state
   const [trialId, setTrialId] = useState<string>("");
@@ -209,6 +224,7 @@ export default function FinancePage() {
     if (validRows.length === 0) { toast.error("Tambahkan minimal satu baris dengan judul dan jumlah"); return; }
     if (!paymentDate) { toast.error("Tanggal pembayaran wajib diisi"); return; }
     if (categoryName) rememberCategory(categoryName);
+    validRows.forEach(r => rememberTitle(r.title.trim()));
     batchMutation.mutate({
       trial_id: trialId || null,
       payment_date: paymentDate,
@@ -509,6 +525,7 @@ export default function FinancePage() {
                     <option value="cash">Tunai</option>
                     <option value="check">Cek/Giro</option>
                     <option value="card">Kartu</option>
+                    <option value="qris">QRIS</option>
                   </select>
                 </div>
               </div>
@@ -553,7 +570,7 @@ export default function FinancePage() {
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-[38%]">Detail Pengeluaran *</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-[30%]">Vendor/Penyedia</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-[22%]">Jumlah (Rp) *</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500 w-[22%]">Nominal (Rp) *</th>
                         <th className="px-3 py-2 w-10" />
                       </tr>
                     </thead>
@@ -561,7 +578,10 @@ export default function FinancePage() {
                       {rows.map((row, i) => (
                         <tr key={i} className="hover:bg-gray-50/50">
                           <td className="px-2 py-1.5">
-                            <input value={row.title} onChange={e => updateRow(i, "title", e.target.value)}
+                            <input
+                              list="expense-title-suggestions"
+                              value={row.title}
+                              onChange={e => updateRow(i, "title", e.target.value)}
                               placeholder="Nama/deskripsi pengeluaran"
                               className="w-full px-2 py-1.5 border border-transparent rounded focus:border-green-300 focus:outline-none text-sm bg-transparent focus:bg-white hover:bg-white/60" />
                           </td>
@@ -603,6 +623,9 @@ export default function FinancePage() {
                     </tfoot>
                   </table>
                 </div>
+                <datalist id="expense-title-suggestions">
+                  {titleSuggestions.map(s => <option key={s} value={s} />)}
+                </datalist>
               </div>
 
               <div className="flex gap-3 pt-2 border-t border-gray-100">
@@ -694,6 +717,7 @@ export default function FinancePage() {
                     placeholder="10.000.000"
                     className={inputCls}
                   />
+                  <input type="hidden" {...budgetForm.register("total_amount")} />
                   {budgetForm.formState.errors.total_amount && <p className="text-red-500 text-xs mt-1">{budgetForm.formState.errors.total_amount.message}</p>}
                 </div>
               </div>

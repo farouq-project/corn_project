@@ -20,6 +20,27 @@ class DiseaseController extends Controller
         return response()->json(DiseaseType::where('is_active', true)->orderBy('sort_order')->get());
     }
 
+    public function typeStore(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'disease_name' => ['required', 'string', 'max:100'],
+            'disease_code' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $code = !empty($data['disease_code'])
+            ? strtoupper($data['disease_code'])
+            : 'DIS-' . strtoupper(Str::random(6));
+
+        $type = DiseaseType::create([
+            'disease_code' => $code,
+            'disease_name' => $data['disease_name'],
+            'is_active' => true,
+            'sort_order' => (DiseaseType::max('sort_order') ?? 0) + 1,
+        ]);
+
+        return response()->json($type, 201);
+    }
+
     // ── Disease Evaluations ────────────────────────────────────────────────────
 
     public function index(Request $request): JsonResponse

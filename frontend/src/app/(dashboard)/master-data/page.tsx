@@ -117,6 +117,9 @@ export default function MasterDataPage() {
   // Research Plan Lokasi autocomplete
   const [lokasiSearch, setLokasiSearch] = useState("");
   const [lokasiDropOpen, setLokasiDropOpen] = useState(false);
+  // Inline Lokasi creation from within trial form
+  const [isLokasiSubModalOpen, setIsLokasiSubModalOpen] = useState(false);
+  const [lokasiSubFormKey, setLokasiSubFormKey] = useState(0);
   const qc = useQueryClient();
 
   // ── Queries ──────────────────────────────────────────────────────────────
@@ -192,6 +195,20 @@ export default function MasterDataPage() {
   const ecUpdate = useMutation({ mutationFn: ({id,d}: {id:number;d:{name:string;description?:string}}) => api.put(`/v1/environment-conditions/${id}`, d), onSuccess: () => { qc.invalidateQueries({queryKey:["environment-conditions"]}); toast.success("Environment diperbarui"); closeModal(); }, onError: e => toast.error(getApiErrorMessage(e)) });
   const ecDelete = useMutation({ mutationFn: (id: number) => api.delete(`/v1/environment-conditions/${id}`), onSuccess: () => { qc.invalidateQueries({queryKey:["environment-conditions"]}); toast.success("Environment dihapus"); }, onError: e => toast.error(getApiErrorMessage(e)) });
 
+  const inlineEnvCreate = useMutation({
+    mutationFn: (d: EnvironmentFormData) => api.post("/v1/environments", d),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["environments"] });
+      qc.invalidateQueries({ queryKey: ["environments", "master-data-100"] });
+      const newEnv = res.data as Environment;
+      tForm.setValue("environment_id", newEnv.id);
+      setLokasiSearch((newEnv as Environment & {name?:string}).name ?? newEnv.environment_code ?? "");
+      setIsLokasiSubModalOpen(false);
+      toast.success("Lokasi ditambahkan dan dipilih");
+    },
+    onError: e => toast.error(getApiErrorMessage(e)),
+  });
+
   const charImportMutation = useMutation({
     mutationFn: (file: File) => { const fd = new FormData(); fd.append("file", file); return api.post("/v1/phenotyping/characteristics/import", fd, {headers:{"Content-Type":"multipart/form-data"}}); },
     onSuccess: res => { qc.invalidateQueries({queryKey:["characteristics-all"]}); qc.invalidateQueries({queryKey:["characteristics"]}); setCharImportResult(res.data as typeof charImportResult); toast.success((res.data as {message?:string})?.message ?? "Import selesai"); },
@@ -230,6 +247,7 @@ export default function MasterDataPage() {
       layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
       replications: t.replications,
       status: t.status as z.infer<typeof trialSchema>["status"],
+      planting_date: (t as Trial & { planting_date?: string }).planting_date ?? "",
     });
     setIsModalOpen(true);
   };
@@ -590,7 +608,14 @@ export default function MasterDataPage() {
                   <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label><input {...tForm.register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="relative">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-sm font-medium text-gray-700">Lokasi <span className="text-gray-400 font-normal text-xs">(opsional)</span></label>
+                        <button type="button"
+                          onClick={() => { setLokasiSubFormKey(k => k + 1); setIsLokasiSubModalOpen(true); }}
+                          className="flex items-center gap-1 text-xs text-green-600 hover:text-green-700 transition">
+                          <Plus className="w-3 h-3" /> Tambah Lokasi
+                        </button>
+                      </div>
                       <input
                         value={lokasiSearch}
                         onChange={e => { setLokasiSearch(e.target.value); setLokasiDropOpen(true); tForm.setValue("environment_id", null); }}
@@ -757,6 +782,28 @@ export default function MasterDataPage() {
                 </form>
               )}
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stacked Lokasi sub-modal — opens on top of trial modal */}
+      {isLokasiSubModalOpen && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Tambah Lokasi Baru</h3>
+              <button onClick={() => setIsLokasiSubModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-6">
+              <EnvironmentForm
+                key={lokasiSubFormKey}
+                seasons={seasonsList ?? []}
+                editMode={false}
+                onSubmit={d => inlineEnvCreate.mutate(d)}
+                onCancel={() => setIsLokasiSubModalOpen(false)}
+                isSubmitting={inlineEnvCreate.isPending}
+              />
             </div>
           </div>
         </div>

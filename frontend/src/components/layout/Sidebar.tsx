@@ -34,6 +34,12 @@ const navigation = [
     ],
   },
   {
+    label: "Master Data",
+    items: [
+      { name: "Master Data", href: "/master-data", icon: Map }, // includes Research Plan (trials)
+    ],
+  },
+  {
     label: "Pengamatan",
     items: [
       { name: "Karakteristik", href: "/pengamatan/karakteristik", icon: Microscope },
@@ -42,12 +48,6 @@ const navigation = [
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
       { name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive },
       { name: "Inventaris", href: "/pengamatan/inventory", icon: Boxes },
-    ],
-  },
-  {
-    label: "Master Data",
-    items: [
-      { name: "Master Data", href: "/master-data", icon: Map }, // includes Research Plan (trials)
     ],
   },
   {

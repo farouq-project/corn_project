@@ -168,6 +168,7 @@ Route::prefix('v1')->group(function () {
         // Disease Resistance Evaluation
         Route::prefix('disease')->group(function () {
             Route::get('types', [DiseaseController::class, 'typeIndex']);
+            Route::post('types', [DiseaseController::class, 'typeStore']);
             Route::get('evaluations', [DiseaseController::class, 'index']);
             Route::post('evaluations', [DiseaseController::class, 'store']);
             Route::get('evaluations/{evaluation}', [DiseaseController::class, 'show']);
