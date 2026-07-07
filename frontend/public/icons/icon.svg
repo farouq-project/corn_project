@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="80" fill="#16a34a"/>
+  <!-- Corn stalk -->
+  <line x1="256" y1="420" x2="256" y2="120" stroke="#bbf7d0" stroke-width="18" stroke-linecap="round"/>
+  <!-- Corn ear body -->
+  <ellipse cx="256" cy="260" rx="52" ry="96" fill="#fde047"/>
+  <!-- Corn rows pattern -->
+  <rect x="230" y="180" width="10" height="160" rx="5" fill="#ca8a04" opacity="0.5"/>
+  <rect x="248" y="176" width="10" height="168" rx="5" fill="#ca8a04" opacity="0.5"/>
+  <rect x="266" y="180" width="10" height="160" rx="5" fill="#ca8a04" opacity="0.5"/>
+  <rect x="284" y="186" width="8" height="148" rx="4" fill="#ca8a04" opacity="0.4"/>
+  <rect x="212" y="186" width="8" height="148" rx="4" fill="#ca8a04" opacity="0.4"/>
+  <!-- Corn husk leaves -->
+  <path d="M256 180 Q210 200 195 280 Q220 260 256 260" fill="#22c55e" opacity="0.8"/>
+  <path d="M256 180 Q302 200 317 280 Q292 260 256 260" fill="#22c55e" opacity="0.8"/>
+  <path d="M256 240 Q200 250 185 340 Q225 310 256 320" fill="#16a34a" opacity="0.7"/>
+  <path d="M256 240 Q312 250 327 340 Q287 310 256 320" fill="#16a34a" opacity="0.7"/>
+  <!-- Corn silk -->
+  <path d="M240 166 Q230 130 220 100" stroke="#fef9c3" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M252 162 Q248 125 245 95" stroke="#fef9c3" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M264 162 Q268 125 272 95" stroke="#fef9c3" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M276 166 Q286 130 296 100" stroke="#fef9c3" stroke-width="4" stroke-linecap="round" fill="none"/>
+</svg>

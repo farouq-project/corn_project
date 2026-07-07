@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
+import { InstallButton } from "@/components/pwa/InstallButton";
 import { Leaf } from "lucide-react";
 
 function HydrationSkeleton() {
@@ -23,7 +25,15 @@ function HydrationSkeleton() {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, _hasHydrated } = useAuthStore();
   const router = useRouter();
+  const pathname = usePathname();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Fallback: if hydration takes > 3s, force a re-check (handles rare localStorage race)
+  const [hydrationTimeout, setHydrationTimeout] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setHydrationTimeout(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     if (_hasHydrated && !isAuthenticated) {
@@ -31,21 +41,33 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [_hasHydrated, isAuthenticated, router]);
 
-  // Still reading from localStorage — show skeleton, never redirect
-  if (!_hasHydrated) return <HydrationSkeleton />;
+  // Close mobile nav on route change
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [pathname]);
 
-  // Hydration done but not logged in — blank while redirect fires
+  if (!_hasHydrated && !hydrationTimeout) return <HydrationSkeleton />;
+
+  // After timeout: if still not hydrated or not authenticated, redirect
+  if (hydrationTimeout && !isAuthenticated) {
+    router.replace("/login");
+    return null;
+  }
+
   if (!isAuthenticated) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-[100dvh] overflow-hidden bg-gray-50">
       <Sidebar isOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="flex-1 overflow-y-auto p-3 md:p-6">
+        <main className="flex-1 overflow-y-auto p-3 md:p-6 pb-20 md:pb-6">
           {children}
         </main>
       </div>
+      {/* Mobile bottom nav — only visible on small screens */}
+      <MobileBottomNav />
+      <InstallButton />
     </div>
   );
 }
