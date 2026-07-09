@@ -13,18 +13,14 @@ export function InstallButton() {
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // Already installed (running in standalone mode)
     if (window.matchMedia("(display-mode: standalone)").matches) {
       setIsInstalled(true);
       return;
     }
-
-    // Check if user dismissed previously this session
     if (sessionStorage.getItem("pwa-dismissed")) {
       setDismissed(true);
       return;
     }
-
     const handler = (e: Event) => {
       e.preventDefault();
       setPrompt(e as BeforeInstallPromptEvent);

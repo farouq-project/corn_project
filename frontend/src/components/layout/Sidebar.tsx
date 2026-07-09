@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
-  Package,
   Boxes,
   Wallet,
   Map,
@@ -22,12 +21,9 @@ import {
   Microscope,
   ClipboardList,
   X,
-  Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { useQuery } from "@tanstack/react-query";
-import api from "@/lib/axios";
 
 const navigation = [
   {
@@ -78,15 +74,6 @@ interface SidebarProps {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuthStore();
-  const isSuperAdmin = user?.roles?.some((r) => (typeof r === "string" ? r : (r as { name?: string }).name) === "super_admin");
-
-  const { data: pendingData } = useQuery({
-    queryKey: ["users-pending"],
-    queryFn: () => api.get<{ total: number }>("/v1/users/pending").then((r) => r.data),
-    enabled: !!isSuperAdmin,
-    refetchInterval: 60_000,
-  });
-  const pendingCount = (pendingData as { total?: number; meta?: { total?: number } } | undefined)?.meta?.total ?? (pendingData as { total?: number } | undefined)?.total ?? 0;
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -157,24 +144,6 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
                   </Link>
                 );
               })}
-              {/* Pending Users link — only for super_admin under Administrasi */}
-              {group.label === "Administrasi" && isSuperAdmin && (
-                <Link
-                  href="/users?tab=pending"
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm font-medium transition-all group",
-                    pathname === "/users"
-                      ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                      : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-                  )}
-                >
-                  <Clock className="w-4 h-4 flex-shrink-0 text-amber-400 group-hover:text-amber-600" />
-                  <span className="flex-1 truncate">Menunggu Persetujuan</span>
-                  {pendingCount > 0 && (
-                    <span className="bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{pendingCount}</span>
-                  )}
-                </Link>
-              )}
             </div>
           ))}
         </nav>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/store/authStore";
 import { authService } from "@/services/auth.service";
 import { cn } from "@/lib/utils";
+import { InstallIconButton } from "@/components/pwa/InstallIconButton";
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -66,6 +67,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium hidden md:inline-flex", roleInfo.color)}>
           {roleInfo.label}
         </span>
+
+        {/* Install PWA */}
+        <InstallIconButton />
 
         {/* Notifications */}
         <button className="relative p-2 rounded-lg hover:bg-gray-100 transition text-gray-500 hover:text-gray-700">

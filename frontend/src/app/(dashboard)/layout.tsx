@@ -6,7 +6,6 @@ import { useAuthStore } from "@/store/authStore";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TopBar } from "@/components/layout/TopBar";
 import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
-import { InstallButton } from "@/components/pwa/InstallButton";
 import { Leaf } from "lucide-react";
 
 function HydrationSkeleton() {
@@ -67,7 +66,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </div>
       {/* Mobile bottom nav — only visible on small screens */}
       <MobileBottomNav />
-      <InstallButton />
     </div>
   );
 }

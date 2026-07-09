@@ -118,6 +118,11 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({ left: DEFAULT_PINNED_COLUMNS });
   const [showColumnMenu, setShowColumnMenu] = useState(false);
 
+  const charLabelMap = useMemo(
+    () => Object.fromEntries(characteristics.map((c) => [c.code, c.name])),
+    [characteristics]
+  );
+
   const data = useMemo<RowData[]>(
     () =>
       records.map((record) => ({
@@ -162,7 +167,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
       columnHelper.accessor((row) => row[c.code] as number | null, {
         id: c.code,
         header: () => (
-          <div className="text-center leading-tight">
+          <div className="text-center leading-tight" title={c.name + (c.unit ? ` (${c.unit})` : "")}>
             <div>{c.code}</div>
             {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
           </div>
@@ -225,6 +230,24 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
 
         {showColumnMenu && (
           <div className="absolute right-0 top-9 z-20 w-64 max-w-[80vw] max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2">
+            <div className="flex gap-1.5 mb-2 pb-2 border-b border-gray-100">
+              <button
+                onClick={() => table.getAllLeafColumns().forEach((c) => c.toggleVisibility(true))}
+                className="flex-1 text-xs py-1 px-2 rounded bg-green-50 text-green-700 hover:bg-green-100 transition"
+              >
+                Pilih Semua
+              </button>
+              <button
+                onClick={() =>
+                  table.getAllLeafColumns()
+                    .filter((c) => !DEFAULT_PINNED_COLUMNS.includes(c.id) && c.id !== "__aksi__")
+                    .forEach((c) => c.toggleVisibility(false))
+                }
+                className="flex-1 text-xs py-1 px-2 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 transition"
+              >
+                Batal Semua
+              </button>
+            </div>
             {table.getAllLeafColumns().map((column) => {
               const isPinned = column.getIsPinned();
               return (
@@ -236,7 +259,7 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
                       onChange={column.getToggleVisibilityHandler()}
                       className="accent-green-600"
                     />
-                    <span className="truncate">{STATIC_COLUMN_LABELS[column.id] ?? column.id}</span>
+                    <span className="truncate">{STATIC_COLUMN_LABELS[column.id] ?? charLabelMap[column.id] ?? column.id}</span>
                   </label>
                   <button
                     onClick={() => column.pin(isPinned ? false : "left")}
