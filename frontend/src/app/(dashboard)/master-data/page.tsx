@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Map, Calendar, Package, X, Dna, BookOpen,
   Microscope, MapPin, Repeat2, Edit2, Upload, Download,
-  ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Leaf,
+  ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Leaf, Settings2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -30,6 +30,48 @@ type TabType = "genotypes" | "trials" | "characteristics" | "environments" | "en
 interface EnvCondition { id: number; name: string; description?: string; is_active: boolean; }
 
 const toN = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
+
+// ── Jenis Jagung logic ────────────────────────────────────────────────────────
+
+interface JenisJagungRule {
+  threshold: number;
+  label: string;
+}
+
+const DEFAULT_JENIS_RULES: JenisJagungRule[] = [
+  { threshold: 10000, label: "Field Corn" },
+  { threshold: 20000, label: "Sweet Corn" },
+  { threshold: 30000, label: "Hibrida Field Corn" },
+  { threshold: 40000, label: "Hibrida Sweet Corn" },
+];
+
+const JENIS_COLORS: Record<string, string> = {
+  "Field Corn": "bg-green-50 text-green-700",
+  "Sweet Corn": "bg-yellow-50 text-yellow-700",
+  "Hibrida Field Corn": "bg-blue-50 text-blue-700",
+  "Hibrida Sweet Corn": "bg-purple-50 text-purple-700",
+  "Check": "bg-gray-100 text-gray-500",
+};
+
+const JENIS_LS_KEY = "jenis-jagung-rules";
+
+function loadJenisRules(): JenisJagungRule[] {
+  try {
+    const raw = localStorage.getItem(JENIS_LS_KEY);
+    if (raw) return JSON.parse(raw) as JenisJagungRule[];
+  } catch {}
+  return DEFAULT_JENIS_RULES;
+}
+
+function getJenisJagung(code: string, rules: JenisJagungRule[]): string {
+  const num = parseInt(code.substring(0, 5), 10);
+  if (isNaN(num)) return "Check";
+  const sorted = [...rules].sort((a, b) => b.threshold - a.threshold);
+  for (const rule of sorted) {
+    if (num > rule.threshold) return rule.label;
+  }
+  return "Check";
+}
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -114,6 +156,14 @@ export default function MasterDataPage() {
   const [editingEnvCond, setEditingEnvCond] = useState<EnvCondition | null>(null);
   const [envCondName, setEnvCondName] = useState("");
   const [envCondDesc, setEnvCondDesc] = useState("");
+  // Jenis Jagung
+  const [jenisFilter, setJenisFilter] = useState<string | null>(null);
+  const [showJenisRuleModal, setShowJenisRuleModal] = useState(false);
+  const [jenisRules, setJenisRules] = useState<JenisJagungRule[]>(() => {
+    if (typeof window === "undefined") return DEFAULT_JENIS_RULES;
+    return loadJenisRules();
+  });
+  const [editingRules, setEditingRules] = useState<JenisJagungRule[]>([]);
   // Research Plan Lokasi autocomplete
   const [lokasiSearch, setLokasiSearch] = useState("");
   const [lokasiDropOpen, setLokasiDropOpen] = useState(false);
@@ -299,6 +349,11 @@ export default function MasterDataPage() {
 
   const gCols: ColumnDef<Genotype, unknown>[] = [
     { header: "Kode", accessorKey: "genotype_code", cell: ({getValue}) => <span className="font-mono font-bold text-green-700">{getValue() as string}</span> },
+    { header: "Jenis Jagung", id: "jenis_jagung", cell: ({row}) => {
+      const jenis = getJenisJagung(row.original.genotype_code, jenisRules);
+      const color = JENIS_COLORS[jenis] ?? "bg-gray-100 text-gray-500";
+      return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${color}`}>{jenis}</span>;
+    }},
     { header: "Nama", accessorKey: "genotype_name" },
     { header: "Kategori", accessorKey: "category", cell: ({getValue}) => <span className="text-xs capitalize">{(getValue() as string).replace("_"," ")}</span> },
     { header: "Status", accessorKey: "status", cell: ({getValue}) => <StatusBadge status={getValue() as string} /> },
@@ -493,17 +548,63 @@ export default function MasterDataPage() {
           {/* ── Genotipe ── */}
           {activeTab === "genotypes" && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 justify-end">
-                <label className="text-xs text-gray-500">Tampilkan:</label>
-                <select value={String(genoPageSize)} onChange={e => setGenoPageSize(e.target.value === "all" ? "all" : Number(e.target.value))}
-                  className="px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
-                  <option value="all">Semua ({genotypes.length})</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                  <option value="200">200</option>
-                </select>
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Jenis Jagung filter chips */}
+                {(() => {
+                  const allJenis = genotypes.map(g => getJenisJagung(g.genotype_code, jenisRules));
+                  const counts: Record<string, number> = {};
+                  allJenis.forEach(j => { counts[j] = (counts[j] ?? 0) + 1; });
+                  const labels = [...new Set(allJenis)].sort();
+                  return (
+                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
+                      <span className="text-xs text-gray-400 mr-0.5">Jenis:</span>
+                      <button
+                        onClick={() => setJenisFilter(null)}
+                        className={cn("text-xs px-2.5 py-1 rounded-full border transition", jenisFilter === null ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50")}
+                      >
+                        Semua ({genotypes.length})
+                      </button>
+                      {labels.map(label => {
+                        const color = JENIS_COLORS[label] ?? "bg-gray-100 text-gray-500";
+                        const active = jenisFilter === label;
+                        return (
+                          <button key={label}
+                            onClick={() => setJenisFilter(active ? null : label)}
+                            className={cn("text-xs px-2.5 py-1 rounded-full border transition font-medium", active ? color + " border-transparent ring-2 ring-offset-1 ring-gray-400" : color + " opacity-70 hover:opacity-100 border-transparent")}
+                          >
+                            {label} ({counts[label] ?? 0})
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={() => { setEditingRules([...jenisRules]); setShowJenisRuleModal(true); }}
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition ml-1"
+                        title="Atur logika klasifikasi"
+                      >
+                        <Settings2 className="w-3 h-3" /> Atur Logika
+                      </button>
+                    </div>
+                  );
+                })()}
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500">Tampilkan:</label>
+                  <select value={String(genoPageSize)} onChange={e => setGenoPageSize(e.target.value === "all" ? "all" : Number(e.target.value))}
+                    className="px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500">
+                    <option value="all">Semua ({genotypes.length})</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                  </select>
+                </div>
               </div>
-              <DataTable data={genotypes} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} pageSize={genoPageSize === "all" ? 9999 : genoPageSize} />
+              {(() => {
+                const filtered = jenisFilter
+                  ? genotypes.filter(g => getJenisJagung(g.genotype_code, jenisRules) === jenisFilter)
+                  : genotypes;
+                return (
+                  <DataTable data={filtered} columns={gCols} isLoading={gLoading} searchPlaceholder="Cari kode atau nama genotipe..." emptyMessage="Belum ada genotipe" getRowId={r => String(r.id)} onBulkDelete={rows => gBulkDel.mutate(rows.map(r => r.id))} isBulkDeleting={gBulkDel.isPending} pageSize={genoPageSize === "all" ? 9999 : genoPageSize} />
+                );
+              })()}
             </div>
           )}
 
@@ -825,6 +926,72 @@ export default function MasterDataPage() {
                 onCancel={() => setIsLokasiSubModalOpen(false)}
                 isSubmitting={inlineEnvCreate.isPending}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Jenis Jagung Rule Editor Modal */}
+      {showJenisRuleModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Atur Logika Jenis Jagung</h3>
+              <button onClick={() => setShowJenisRuleModal(false)} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-gray-400">Klasifikasi berdasarkan 5 digit pertama kode genotipe. Logika diurutkan dari nilai terbesar — jika angka {">"} threshold, label tersebut yang digunakan.</p>
+              <div className="space-y-2">
+                {editingRules.sort((a,b) => a.threshold - b.threshold).map((rule, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className="text-xs text-gray-400 w-4">{i+1}.</span>
+                    <span className="text-xs text-gray-500 whitespace-nowrap">{">"}
+                    </span>
+                    <input
+                      type="number"
+                      value={rule.threshold}
+                      onChange={e => setEditingRules(p => p.map((r,idx) => idx===i ? {...r, threshold: Number(e.target.value)} : r))}
+                      className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                    <span className="text-xs text-gray-400">→</span>
+                    <input
+                      type="text"
+                      value={rule.label}
+                      onChange={e => setEditingRules(p => p.map((r,idx) => idx===i ? {...r, label: e.target.value} : r))}
+                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
+                      placeholder="Label kategori"
+                    />
+                    <button
+                      onClick={() => setEditingRules(p => p.filter((_,idx) => idx !== i))}
+                      className="p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => setEditingRules(p => [...p, { threshold: 50000, label: "Kategori Baru" }])}
+                className="flex items-center gap-1.5 text-xs text-green-600 hover:text-green-700 px-3 py-1.5 border border-dashed border-green-300 rounded-lg hover:bg-green-50 transition"
+              >
+                <Plus className="w-3 h-3" /> Tambah Aturan
+              </button>
+              <div className="flex gap-3 pt-2 border-t">
+                <button onClick={() => { setEditingRules([...DEFAULT_JENIS_RULES]); }} className="px-3 py-2 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50">Reset Default</button>
+                <button onClick={() => setShowJenisRuleModal(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button>
+                <button
+                  onClick={() => {
+                    const valid = editingRules.filter(r => r.label.trim());
+                    setJenisRules(valid);
+                    localStorage.setItem(JENIS_LS_KEY, JSON.stringify(valid));
+                    setShowJenisRuleModal(false);
+                    toast.success("Logika klasifikasi disimpan");
+                  }}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium"
+                >
+                  Simpan
+                </button>
+              </div>
             </div>
           </div>
         </div>

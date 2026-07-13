@@ -13,6 +13,7 @@ class InventoryItem extends Model
         'name', 'category', 'description', 'quantity', 'unit', 'condition', 'location',
         'product_photos', 'borrower_name', 'borrower_contact', 'borrower_photos',
         'loan_date', 'expected_return_date', 'notes', 'recorded_by',
+        'lender_name', 'borrow_quantity',
     ];
 
     protected $casts = [

@@ -7,7 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Loader2, Leaf, Eye, EyeOff } from "lucide-react";
+import { Loader2, Leaf, Eye, EyeOff, X, KeyRound } from "lucide-react";
 import { authService } from "@/services/auth.service";
 import { useAuthStore } from "@/store/authStore";
 import { getApiErrorMessage } from "@/lib/axios";
@@ -23,6 +23,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
   const [showPassword, setShowPassword] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   const {
     register,
@@ -75,9 +76,18 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(true)}
+                  className="text-xs text-green-600 hover:text-green-700 hover:underline"
+                >
+                  Lupa Password?
+                </button>
+              </div>
               <div className="relative">
                 <input
                   {...register("password")}
@@ -144,6 +154,48 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgot && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-yellow-100 flex items-center justify-center">
+                  <KeyRound className="w-4 h-4 text-yellow-600" />
+                </div>
+                <h3 className="font-semibold text-gray-800">Lupa Password</h3>
+              </div>
+              <button onClick={() => setShowForgot(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">
+                Reset password dilakukan oleh <strong>Super Admin</strong> sistem.
+              </p>
+              <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-4 space-y-2 text-sm text-gray-700">
+                <p className="font-medium text-yellow-800">Langkah reset password:</p>
+                <ol className="list-decimal list-inside space-y-1 text-xs text-gray-600">
+                  <li>Hubungi Super Admin dengan menyebutkan email akun Anda</li>
+                  <li>Super Admin akan mereset password melalui halaman Pengguna</li>
+                  <li>Password baru akan diberikan oleh Super Admin secara langsung</li>
+                  <li>Segera ganti password setelah masuk melalui menu Profil</li>
+                </ol>
+              </div>
+              <p className="text-xs text-gray-400 text-center">
+                Hubungi tim penelitian UNPAD untuk bantuan lebih lanjut
+              </p>
+            </div>
+            <button
+              onClick={() => setShowForgot(false)}
+              className="w-full mt-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
+            >
+              Mengerti
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

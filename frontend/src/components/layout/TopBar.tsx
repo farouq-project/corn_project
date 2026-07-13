@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Menu, Search, User } from "lucide-react";
+import { Bell, LogOut, Menu, Search, User, Info } from "lucide-react";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/authStore";
 import { authService } from "@/services/auth.service";
@@ -17,6 +17,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const { user, logout } = useAuthStore();
   const router = useRouter();
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -72,15 +73,38 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <InstallIconButton />
 
         {/* Notifications */}
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition text-gray-500 hover:text-gray-700">
-          <Bell className="w-5 h-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => { setShowNotif(!showNotif); setShowDropdown(false); }}
+            className="relative p-2 rounded-lg hover:bg-gray-100 transition text-gray-500 hover:text-gray-700"
+          >
+            <Bell className="w-5 h-5" />
+          </button>
+
+          {showNotif && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowNotif(false)} />
+              <div className="absolute right-0 mt-1 w-72 bg-white rounded-xl shadow-lg border border-gray-100 z-20 overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-800">Notifikasi</p>
+                  <span className="text-xs text-gray-400">Hari ini</span>
+                </div>
+                <div className="py-8 px-4 text-center">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                    <Info className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <p className="text-sm text-gray-500">Tidak ada notifikasi baru</p>
+                  <p className="text-xs text-gray-400 mt-1">Notifikasi jadwal & aktivitas akan muncul di sini</p>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* User menu */}
         <div className="relative">
           <button
-            onClick={() => setShowDropdown(!showDropdown)}
+            onClick={() => { setShowDropdown(!showDropdown); setShowNotif(false); }}
             className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-gray-100 transition"
           >
             <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
