@@ -31,11 +31,15 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   };
 
   const roleBadge: Record<string, { label: string; color: string }> = {
-    super_admin: { label: "Super Admin", color: "bg-purple-100 text-purple-700" },
-    principal_researcher: { label: "Peneliti Utama", color: "bg-blue-100 text-blue-700" },
-    field_researcher: { label: "Peneliti Lapang", color: "bg-green-100 text-green-700" },
-    storage_officer: { label: "Petugas Gudang", color: "bg-yellow-100 text-yellow-700" },
-    finance_staff: { label: "Staf Keuangan", color: "bg-orange-100 text-orange-700" },
+    super_admin:          { label: "Super Admin",       color: "bg-purple-100 text-purple-700" },
+    researcher:           { label: "Researcher",        color: "bg-blue-100 text-blue-700" },
+    field_team:           { label: "Field Team",        color: "bg-green-100 text-green-700" },
+    colaborator:          { label: "Colaborator",       color: "bg-teal-100 text-teal-700" },
+    // legacy fallbacks
+    principal_researcher: { label: "Peneliti Utama",   color: "bg-blue-100 text-blue-700" },
+    field_researcher:     { label: "Peneliti Lapang",  color: "bg-green-100 text-green-700" },
+    storage_officer:      { label: "Petugas Gudang",   color: "bg-yellow-100 text-yellow-700" },
+    finance_staff:        { label: "Staf Keuangan",    color: "bg-orange-100 text-orange-700" },
   };
 
   const currentRole = user?.roles?.[0] ?? "";

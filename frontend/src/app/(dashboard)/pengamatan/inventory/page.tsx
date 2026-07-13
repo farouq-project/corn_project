@@ -77,6 +77,7 @@ export default function InventoryPage() {
   const isSuperAdmin = user?.roles?.some((r: string | { name?: string }) =>
     (typeof r === "string" ? r : (r as { name?: string }).name) === "super_admin"
   );
+  const canEdit = !user?.roles?.includes("colaborator");
 
   const [tab, setTab] = useState<"inventory" | "log" | "history">("inventory");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -291,8 +292,8 @@ export default function InventoryPage() {
       cell: ({row}) => (
         <div className="flex gap-1">
           <button onClick={() => setViewing(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-400"><Eye className="w-3.5 h-3.5"/></button>
-          <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500"><Edit2 className="w-3.5 h-3.5"/></button>
-          {!row.original.borrower_name && row.original.condition === "good" && (
+          {canEdit && <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500"><Edit2 className="w-3.5 h-3.5"/></button>}
+          {canEdit && !row.original.borrower_name && row.original.condition === "good" && (
             <button onClick={() => {
               setBorrowingItem(row.original);
               setBorrowPhotos([]);
@@ -302,7 +303,7 @@ export default function InventoryPage() {
               <ArrowLeftRight className="w-3.5 h-3.5"/>
             </button>
           )}
-          <button onClick={() => { if(confirm(`Hapus "${row.original.name}"?`)) deleteMutation.mutate(row.original.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
+          {canEdit && <button onClick={() => { if(confirm(`Hapus "${row.original.name}"?`)) deleteMutation.mutate(row.original.id); }} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>}
         </div>
       ),
     },
@@ -399,7 +400,7 @@ export default function InventoryPage() {
         title="Inventaris"
         description="Kelola inventaris alat, bahan, dan peralatan penelitian"
         actions={
-          tab === "inventory" ? (
+          tab === "inventory" && canEdit ? (
             <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
               <Plus className="w-4 h-4" /> Tambah Item
             </button>
@@ -756,7 +757,7 @@ export default function InventoryPage() {
 
               <div className="flex gap-2 pt-2 border-t">
                 <button onClick={() => setViewing(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
-                <button onClick={() => { openEdit(viewing); setViewing(null); }} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-1"><Edit2 className="w-4 h-4"/>Edit</button>
+                {canEdit && <button onClick={() => { openEdit(viewing); setViewing(null); }} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-1"><Edit2 className="w-4 h-4"/>Edit</button>}
               </div>
             </div>
           </div>

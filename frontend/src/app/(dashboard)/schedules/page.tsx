@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/store/authStore";
 import { Plus, CalendarClock, AlertTriangle, CheckCircle2, Clock, X, Edit2, Calendar, List, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -53,6 +54,8 @@ const OBS_TYPE_LABELS: Record<string, string> = {
 const MONTH_NAMES = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
 export default function SchedulesPage() {
+  const { user } = useAuthStore();
+  const canEdit = !user?.roles?.includes("colaborator");
   const [filter, setFilter] = useState<"all" | "my" | "overdue">("all");
   const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
   const [calendarDate, setCalendarDate] = useState(() => {
@@ -185,10 +188,12 @@ export default function SchedulesPage() {
                 <Calendar className="w-3.5 h-3.5" /> Kalender
               </button>
             </div>
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
-              <Plus className="w-4 h-4" />
-              Buat Jadwal
-            </button>
+            {canEdit && (
+              <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
+                <Plus className="w-4 h-4" />
+                Buat Jadwal
+              </button>
+            )}
           </div>
         }
       />
@@ -256,15 +261,19 @@ export default function SchedulesPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition">
-                        <button onClick={() => openEdit(schedule)}
-                          className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition" title="Edit">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => { if (confirm(`Hapus jadwal "${schedule.schedule_title}"?`)) deleteMutation.mutate(schedule.id); }}
-                          className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit && (
+                          <button onClick={() => openEdit(schedule)}
+                            className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition" title="Edit">
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button
+                            onClick={() => { if (confirm(`Hapus jadwal "${schedule.schedule_title}"?`)) deleteMutation.mutate(schedule.id); }}
+                            className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {schedule.status === "pending" && (
                           <button
                             onClick={() => completeMutation.mutate({ id: schedule.id, rate: 100 })}
@@ -401,16 +410,20 @@ export default function SchedulesPage() {
                 </div>
               )}
               <div className="flex gap-2 pt-2">
-                <button onClick={() => { setDetailSchedule(null); openEdit(detailSchedule); }}
-                  className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">
-                  <Edit2 className="w-3.5 h-3.5" /> Edit
-                </button>
-                <button
-                  onClick={() => { if (confirm(`Hapus jadwal "${detailSchedule.schedule_title}"?`)) deleteMutation.mutate(detailSchedule.id); }}
-                  disabled={deleteMutation.isPending}
-                  className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 text-red-500 rounded-lg text-sm hover:bg-red-50 transition">
-                  <Trash2 className="w-3.5 h-3.5" /> Hapus
-                </button>
+                {canEdit && (
+                  <button onClick={() => { setDetailSchedule(null); openEdit(detailSchedule); }}
+                    className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">
+                    <Edit2 className="w-3.5 h-3.5" /> Edit
+                  </button>
+                )}
+                {canEdit && (
+                  <button
+                    onClick={() => { if (confirm(`Hapus jadwal "${detailSchedule.schedule_title}"?`)) deleteMutation.mutate(detailSchedule.id); }}
+                    disabled={deleteMutation.isPending}
+                    className="flex items-center justify-center gap-2 px-3 py-2 border border-red-200 text-red-500 rounded-lg text-sm hover:bg-red-50 transition">
+                    <Trash2 className="w-3.5 h-3.5" /> Hapus
+                  </button>
+                )}
                 {detailSchedule.status === "pending" && (
                   <button onClick={() => { completeMutation.mutate({ id: detailSchedule.id, rate: 100 }); setDetailSchedule(null); }}
                     className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 transition">

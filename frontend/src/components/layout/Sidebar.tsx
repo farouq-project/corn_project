@@ -25,6 +25,15 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 
+// Groups visible per role (group label → allowed roles)
+const GROUP_ACCESS: Record<string, string[]> = {
+  Utama: ["super_admin", "researcher", "principal_researcher"],
+  "Master Data": ["super_admin", "researcher", "principal_researcher"],
+  Pengamatan: ["super_admin", "researcher", "field_team", "colaborator", "principal_researcher", "field_researcher", "storage_officer"],
+  Keuangan: ["super_admin", "finance_staff"],
+  Administrasi: ["super_admin"],
+};
+
 const navigation = [
   {
     label: "Utama",
@@ -74,6 +83,10 @@ interface SidebarProps {
 export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuthStore();
+  const userRole = (user?.roles?.[0] as string) ?? "";
+  const visibleNavigation = navigation.filter(
+    (group) => GROUP_ACCESS[group.label]?.includes(userRole) ?? true
+  );
 
   // Close mobile drawer on navigation
   useEffect(() => {
@@ -120,7 +133,7 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-          {navigation.map((group) => (
+          {visibleNavigation.map((group) => (
             <div key={group.label} className="mb-3">
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-3 mb-1">
                 {group.label}

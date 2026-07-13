@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthStore } from "@/store/authStore";
 import { Plus, CheckCircle2, X, Loader2, Eye, Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -63,6 +64,8 @@ interface DiseaseScore {
 }
 
 export default function DiseasePage() {
+  const { user } = useAuthStore();
+  const canEdit = !user?.roles?.includes("colaborator");
   const [activeTab, setActiveTab] = useState<"evaluations" | "summary">("evaluations");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEval, setEditingEval] = useState<DiseaseEval | null>(null);
@@ -287,7 +290,7 @@ export default function DiseasePage() {
           >
             <Eye className="w-3.5 h-3.5" />
           </button>
-          {row.original.status !== "approved" && (
+          {canEdit && row.original.status !== "approved" && (
             <button
               onClick={() => openEdit(row.original)}
               className="p-1.5 rounded hover:bg-yellow-50 text-yellow-600 transition"
@@ -296,7 +299,7 @@ export default function DiseasePage() {
               <Edit2 className="w-3.5 h-3.5" />
             </button>
           )}
-          {row.original.status !== "approved" && (
+          {canEdit && row.original.status !== "approved" && (
             <button
               onClick={() => approveMutation.mutate(row.original.id)}
               className="p-1.5 rounded hover:bg-green-50 text-green-500 transition"
@@ -305,13 +308,15 @@ export default function DiseasePage() {
               <CheckCircle2 className="w-3.5 h-3.5" />
             </button>
           )}
-          <button
-            onClick={() => { if (confirm(`Hapus evaluasi ${row.original.evaluation_code}? Tindakan ini tidak dapat dibatalkan.`)) deleteMutation.mutate(row.original.id); }}
-            className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
-            title="Hapus"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => { if (confirm(`Hapus evaluasi ${row.original.evaluation_code}? Tindakan ini tidak dapat dibatalkan.`)) deleteMutation.mutate(row.original.id); }}
+              className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
+              title="Hapus"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -325,14 +330,14 @@ export default function DiseasePage() {
       <PageHeader
         title="Evaluasi Ketahanan Penyakit"
         description="Bulai · Hawar Daun · Karat Daun · Busuk Batang"
-        actions={
+        actions={canEdit ? (
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition"
           >
             <Plus className="w-4 h-4" /> Sesi Evaluasi Baru
           </button>
-        }
+        ) : null}
       />
 
       {/* Disease type cards */}
@@ -376,7 +381,7 @@ export default function DiseasePage() {
             <DataTable data={evalList} columns={columns} isLoading={isLoading}
               searchPlaceholder="Cari evaluasi..." emptyMessage="Belum ada evaluasi penyakit"
               getRowId={r => String(r.id)}
-              onBulkDelete={rows => bulkDeleteMutation.mutate(rows.filter(r => r.status !== "approved").map(r => r.id))}
+              onBulkDelete={canEdit ? rows => bulkDeleteMutation.mutate(rows.filter(r => r.status !== "approved").map(r => r.id)) : undefined}
               isBulkDeleting={bulkDeleteMutation.isPending} />
           )}
 

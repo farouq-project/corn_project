@@ -6,6 +6,7 @@ import { Plus, X, Download, Upload, Trash2, Package, Edit2 } from "lucide-react"
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { useAuthStore } from "@/store/authStore";
 import { DataTable } from "@/components/shared/DataTable";
 import { formatDate } from "@/lib/utils";
 import type { ColumnDef } from "@tanstack/react-table";
@@ -31,6 +32,8 @@ interface MonitorEntry {
 }
 
 export default function StorageMonitorPage() {
+  const { user } = useAuthStore();
+  const canEdit = !user?.roles?.includes("colaborator");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<MonitorEntry | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -170,9 +173,9 @@ export default function StorageMonitorPage() {
       header: "Aksi", id: "act",
       cell: ({row}) => (
         <div className="flex gap-1">
-          <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>
-          <button onClick={() => { if(confirm(`Hapus entri #${row.original.entry_number}?`)) deleteMutation.mutate(row.original.id); }}
-            className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>
+          {canEdit && <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500"><Edit2 className="w-3.5 h-3.5"/></button>}
+          {canEdit && <button onClick={() => { if(confirm(`Hapus entri #${row.original.entry_number}?`)) deleteMutation.mutate(row.original.id); }}
+            className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="w-3.5 h-3.5"/></button>}
         </div>
       ),
     },
@@ -183,7 +186,7 @@ export default function StorageMonitorPage() {
       <PageHeader
         title="Storage Monitor"
         description="Pantau dan catat pergerakan benih antar kode, box, dan kemasan"
-        actions={
+        actions={canEdit ? (
           <div className="flex gap-2">
             <button onClick={() => setShowImport(v=>!v)}
               className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
@@ -194,7 +197,7 @@ export default function StorageMonitorPage() {
               <Plus className="w-4 h-4" /> Tambah Entri
             </button>
           </div>
-        }
+        ) : null}
       />
 
       {/* Import panel */}
@@ -251,7 +254,7 @@ export default function StorageMonitorPage() {
           emptyMessage="Belum ada entri."
           getRowId={r => String(r.id)}
           pageSize={smPageSize === "all" ? 9999 : smPageSize}
-          onBulkDelete={rows => bulkDeleteMutation.mutate(rows.map(r => r.id))}
+          onBulkDelete={canEdit ? rows => bulkDeleteMutation.mutate(rows.map(r => r.id)) : undefined}
           isBulkDeleting={bulkDeleteMutation.isPending}
         />
       </div>

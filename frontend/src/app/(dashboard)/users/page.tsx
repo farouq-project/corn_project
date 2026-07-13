@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Users, Edit2, Key, X, Clock, CheckCircle, XCircle } from "lucide-react";
+import { Plus, Users, Edit2, Key, X, Clock, CheckCircle, XCircle, Trash2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import api from "@/lib/axios";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { useAuthStore } from "@/store/authStore";
 import type { User } from "@/types";
 import type { ColumnDef } from "@tanstack/react-table";
 import { formatDateTime } from "@/lib/utils";
@@ -22,6 +23,31 @@ function roleName(r: unknown): string {
   if (typeof r === "object" && r !== null && "name" in r) return String((r as { name: unknown }).name);
   return String(r);
 }
+
+// New role system (4 roles, replacing the old 5)
+const NEW_ROLES: Record<string, { label: string; color: string; desc: string }> = {
+  super_admin:  { label: "Super Admin",  color: "bg-purple-100 text-purple-700",  desc: "Akses penuh ke semua fitur" },
+  researcher:   { label: "Researcher",   color: "bg-blue-100 text-blue-700",    desc: "Utama, Master Data, Pengamatan" },
+  field_team:   { label: "Field Team",   color: "bg-green-100 text-green-700",  desc: "Pengamatan saja" },
+  colaborator:  { label: "Colaborator",  color: "bg-teal-100 text-teal-700",    desc: "Pengamatan (lihat saja)" },
+};
+
+// Fallback display for legacy roles still in the DB
+const LEGACY_ROLE_LABELS: Record<string, string> = {
+  principal_researcher: "Peneliti Utama (lama)",
+  field_researcher: "Peneliti Lapang (lama)",
+  storage_officer: "Petugas Gudang (lama)",
+  finance_staff: "Staf Keuangan (lama)",
+};
+
+function getRoleLabel(role: string): string {
+  return NEW_ROLES[role]?.label ?? LEGACY_ROLE_LABELS[role] ?? role;
+}
+function getRoleColor(role: string): string {
+  return NEW_ROLES[role]?.color ?? "bg-gray-100 text-gray-500";
+}
+
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
 
 const createSchema = z.object({
   name: z.string().min(1, "Nama wajib diisi"),
@@ -52,28 +78,12 @@ const resetPwSchema = z.object({
 type CreateForm = z.infer<typeof createSchema>;
 type EditForm = z.infer<typeof editSchema>;
 type ResetPwForm = z.infer<typeof resetPwSchema>;
-
-const roleLabels: Record<string, string> = {
-  super_admin: "Super Admin",
-  principal_researcher: "Peneliti Utama",
-  field_researcher: "Peneliti Lapang",
-  storage_officer: "Petugas Gudang",
-  finance_staff: "Staf Keuangan",
-};
-
-const roleColors: Record<string, string> = {
-  super_admin: "bg-purple-100 text-purple-700",
-  principal_researcher: "bg-blue-100 text-blue-700",
-  field_researcher: "bg-green-100 text-green-700",
-  storage_officer: "bg-yellow-100 text-yellow-700",
-  finance_staff: "bg-orange-100 text-orange-700",
-};
-
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500";
-
 type PendingApproveForm = { role: string };
 
 export default function UsersPage() {
+  const { user: currentUser } = useAuthStore();
+  const isSuperAdmin = currentUser?.roles?.includes("super_admin");
+
   const [tab, setTab] = useState<"active" | "pending">("active");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -83,7 +93,7 @@ export default function UsersPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
-    queryFn: () => api.get<{ data: User[] }>("/v1/users", { params: { per_page: 50 } }).then((r) => r.data),
+    queryFn: () => api.get<{ data: User[] }>("/v1/users", { params: { per_page: 100 } }).then((r) => r.data),
   });
   const users = data?.data ?? [];
 
@@ -93,7 +103,7 @@ export default function UsersPage() {
   });
   const pendingUsers = pendingData?.data ?? [];
 
-  const approveForm = useForm<PendingApproveForm>({ defaultValues: { role: "field_researcher" } });
+  const approveForm = useForm<PendingApproveForm>({ defaultValues: { role: "field_team" } });
 
   const approveMutation = useMutation({
     mutationFn: ({ id, role }: { id: number; role: string }) => api.post(`/v1/users/${id}/approve`, { role }),
@@ -115,26 +125,31 @@ export default function UsersPage() {
     onError: (e) => toast.error(getApiErrorMessage(e)),
   });
 
-  // Forms
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/v1/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      toast.success("Pengguna dihapus");
+    },
+    onError: (e) => toast.error(getApiErrorMessage(e)),
+  });
+
   const createForm = useForm<CreateForm>({ resolver: zodResolver(createSchema) as never });
   const editForm = useForm<EditForm>({ resolver: zodResolver(editSchema) as never });
   const resetPwForm = useForm<ResetPwForm>({ resolver: zodResolver(resetPwSchema) as never });
 
-  // Create mutation
   const createMutation = useMutation({
     mutationFn: (d: CreateForm) => api.post("/v1/users", d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["users"] }); toast.success("Pengguna berhasil dibuat"); setIsCreateOpen(false); createForm.reset(); },
     onError: (e) => toast.error(getApiErrorMessage(e)),
   });
 
-  // Edit mutation
   const editMutation = useMutation({
     mutationFn: ({ id, d }: { id: number; d: EditForm }) => api.put(`/v1/users/${id}`, d),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["users"] }); toast.success("Pengguna berhasil diperbarui"); setEditingUser(null); },
     onError: (e) => toast.error(getApiErrorMessage(e)),
   });
 
-  // Reset password mutation
   const resetPwMutation = useMutation({
     mutationFn: ({ id, d }: { id: number; d: ResetPwForm }) => api.post(`/v1/users/${id}/reset-password`, d),
     onSuccess: () => { toast.success("Password berhasil direset"); setResetPwUser(null); resetPwForm.reset(); },
@@ -185,8 +200,8 @@ export default function UsersPage() {
       cell: ({ row }) => {
         const role = roleName(row.original.roles?.[0]);
         return role ? (
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${roleColors[role] ?? "bg-gray-100 text-gray-600"}`}>
-            {roleLabels[role] ?? role}
+          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${getRoleColor(role)}`}>
+            {getRoleLabel(role)}
           </span>
         ) : <span className="text-gray-300">-</span>;
       },
@@ -204,16 +219,33 @@ export default function UsersPage() {
     {
       header: "Aksi",
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500 transition" title="Edit">
-            <Edit2 className="w-3.5 h-3.5" />
-          </button>
-          <button onClick={() => { setResetPwUser(row.original); resetPwForm.reset(); }} className="p-1.5 rounded hover:bg-orange-50 text-orange-500 transition" title="Reset Password">
-            <Key className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const isSelf = row.original.id === currentUser?.id;
+        const targetIsSuperAdmin = roleName(row.original.roles?.[0]) === "super_admin";
+        return (
+          <div className="flex items-center gap-1">
+            <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-500 transition" title="Edit">
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => { setResetPwUser(row.original); resetPwForm.reset(); }} className="p-1.5 rounded hover:bg-orange-50 text-orange-500 transition" title="Reset Password">
+              <Key className="w-3.5 h-3.5" />
+            </button>
+            {isSuperAdmin && !isSelf && !targetIsSuperAdmin && (
+              <button
+                onClick={() => {
+                  if (confirm(`Hapus pengguna "${row.original.name}"? Tindakan ini tidak dapat dibatalkan.`))
+                    deleteMutation.mutate(row.original.id);
+                }}
+                disabled={deleteMutation.isPending}
+                className="p-1.5 rounded hover:bg-red-50 text-red-400 transition disabled:opacity-40"
+                title="Hapus Pengguna"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -250,7 +282,7 @@ export default function UsersPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setApprovingUser(row.original); approveForm.reset({ role: "field_researcher" }); }}
+            onClick={() => { setApprovingUser(row.original); approveForm.reset({ role: "field_team" }); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition"
           >
             <CheckCircle className="w-3.5 h-3.5" /> Setujui
@@ -267,13 +299,16 @@ export default function UsersPage() {
     },
   ];
 
+  // Role options for dropdowns (new system only)
+  const assignableRoles = Object.entries(NEW_ROLES).filter(([key]) => key !== "super_admin");
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <PageHeader
         title="Manajemen Pengguna"
         description="Kelola akun dan hak akses pengguna sistem"
         actions={
-          tab === "active" ? (
+          tab === "active" && isSuperAdmin ? (
             <button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
               <Plus className="w-4 h-4" /> Tambah Pengguna
             </button>
@@ -302,12 +337,18 @@ export default function UsersPage() {
 
       {tab === "active" && (
         <>
-          {/* Role summary */}
-          <div className="grid grid-cols-5 gap-3">
-            {Object.entries(roleLabels).map(([role, label]) => (
-              <div key={role} className={`rounded-xl border p-3 text-center ${roleColors[role]?.replace("text-", "border-") ?? "border-gray-200"} border-opacity-50`}>
-                <p className="text-xl font-bold">{roleCounts[role] ?? 0}</p>
-                <p className="text-xs mt-0.5 opacity-80">{label}</p>
+          {/* Role summary — new 4-role system */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Object.entries(NEW_ROLES).map(([role, info]) => (
+              <div key={role} className={`rounded-xl border p-3 ${info.color} bg-opacity-30`}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-2xl font-bold">{roleCounts[role] ?? 0}</p>
+                    <p className="text-xs font-semibold mt-0.5">{info.label}</p>
+                  </div>
+                  {role === "super_admin" && <ShieldAlert className="w-4 h-4 opacity-50 mt-0.5" />}
+                </div>
+                <p className="text-[10px] opacity-60 mt-1">{info.desc}</p>
               </div>
             ))}
           </div>
@@ -377,7 +418,7 @@ export default function UsersPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                   <select {...createForm.register("role")} className={inputCls}>
                     <option value="">-- Pilih Role --</option>
-                    {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    {assignableRoles.map(([v, info]) => <option key={v} value={v}>{info.label} — {info.desc}</option>)}
                   </select>
                   {createForm.formState.errors.role && <p className="text-red-500 text-xs mt-1">{createForm.formState.errors.role.message}</p>}
                 </div>
@@ -430,7 +471,7 @@ export default function UsersPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                   <select {...editForm.register("role")} className={inputCls}>
-                    {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    {Object.entries(NEW_ROLES).map(([v, info]) => <option key={v} value={v}>{info.label}</option>)}
                   </select>
                 </div>
                 <div>
@@ -466,10 +507,18 @@ export default function UsersPage() {
             </div>
             <form onSubmit={approveForm.handleSubmit(d => approveMutation.mutate({ id: approvingUser.id, role: d.role }))} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Assign Role *</label>
-                <select {...approveForm.register("role")} className={inputCls}>
-                  {Object.entries(roleLabels).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Assign Role *</label>
+                <div className="space-y-2">
+                  {assignableRoles.map(([v, info]) => (
+                    <label key={v} className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50 transition">
+                      <input type="radio" {...approveForm.register("role")} value={v} className="mt-0.5" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-800">{info.label}</p>
+                        <p className="text-xs text-gray-400">{info.desc}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={() => setApprovingUser(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { formatDate } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
 
 interface LogEntry {
   id: number;
@@ -25,6 +26,8 @@ type SortDir = "asc" | "desc";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
 export default function LogbookPage() {
+  const { user } = useAuthStore();
+  const canEdit = !user?.roles?.includes("colaborator");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [title, setTitle] = useState("");
@@ -163,12 +166,12 @@ export default function LogbookPage() {
       <PageHeader
         title="Log Aktivitas Lapang"
         description="Catatan kegiatan lapang harian dengan bukti foto"
-        actions={
+        actions={canEdit ? (
           <button onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
             <Plus className="w-4 h-4" /> Tambah Log
           </button>
-        }
+        ) : null}
       />
 
       {/* Search */}
@@ -264,15 +267,17 @@ export default function LogbookPage() {
                         <span className="text-xs text-gray-500">{formatDate(entry.activity_date)}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
-                          <button onClick={() => openEdit(entry)} className="p-1.5 rounded hover:bg-blue-50 text-blue-400 transition" title="Edit">
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => { if (confirm("Hapus log ini?")) deleteMutation.mutate(entry.id); }}
-                            className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        {canEdit && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                            <button onClick={() => openEdit(entry)} className="p-1.5 rounded hover:bg-blue-50 text-blue-400 transition" title="Edit">
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => { if (confirm("Hapus log ini?")) deleteMutation.mutate(entry.id); }}
+                              className="p-1.5 rounded hover:bg-red-50 text-red-400 transition" title="Hapus">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
