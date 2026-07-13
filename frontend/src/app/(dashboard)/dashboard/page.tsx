@@ -151,7 +151,7 @@ export default function DashboardPage() {
             <Activity className="w-5 h-5 text-green-500" />
             <h2 className="font-semibold text-gray-800">Kegiatan Terbaru</h2>
           </div>
-          <a href="/field-activities" className="text-sm text-green-600 hover:text-green-700 font-medium">
+          <a href="/pengamatan/logbook" className="text-sm text-green-600 hover:text-green-700 font-medium">
             Lihat semua →
           </a>
         </div>

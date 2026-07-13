@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { User, Lock, Shield, ArrowRight } from "lucide-react";
+import { User, Lock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import Link from "next/link";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useAuthStore } from "@/store/authStore";
@@ -234,22 +233,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Quick link to user management */}
-      <Link
-        href="/users"
-        className="flex items-center justify-between p-4 bg-white rounded-xl border border-gray-100 shadow-sm hover:border-green-200 hover:bg-green-50/30 transition group"
-      >
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-purple-50">
-            <Shield className="w-5 h-5 text-purple-600" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-800">Manajemen Pengguna</p>
-            <p className="text-xs text-gray-400">Tambah akun baru, atur role, dan kelola akses pengguna lain</p>
-          </div>
-        </div>
-        <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-green-600 transition" />
-      </Link>
     </div>
   );
 }

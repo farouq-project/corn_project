@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, BookOpen, Camera, Trash2, Edit2, Search, ChevronUp, ChevronDown, Download } from "lucide-react";
+import { Plus, X, BookOpen, Camera, Trash2, Edit2, Search, ChevronUp, ChevronDown, Download, Filter } from "lucide-react";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -20,8 +20,9 @@ interface LogEntry {
   location?: { field_name: string; id: number };
 }
 
-type SortKey = "activity_date" | "activity_title" | "location";
+type SortKey = "activity_date" | "activity_title" | "location" | "user_name";
 type SortDir = "asc" | "desc";
+interface ColFilters { judul: string; lokasi: string; nama: string; tanggal: string; }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -39,6 +40,9 @@ export default function LogbookPage() {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("activity_date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showColFilters, setShowColFilters] = useState(false);
+  const [colFilters, setColFilters] = useState<ColFilters>({ judul: "", lokasi: "", nama: "", tanggal: "" });
+  const setColFilter = (k: keyof ColFilters, v: string) => setColFilters(p => ({ ...p, [k]: v }));
   const photoInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
 
@@ -68,15 +72,31 @@ export default function LogbookPage() {
         e.user?.name?.toLowerCase().includes(q)
       );
     }
+    if (colFilters.judul) {
+      const q = colFilters.judul.toLowerCase();
+      list = list.filter(e => e.activity_title.toLowerCase().includes(q));
+    }
+    if (colFilters.lokasi) {
+      const q = colFilters.lokasi.toLowerCase();
+      list = list.filter(e => (e.location?.field_name ?? "").toLowerCase().includes(q));
+    }
+    if (colFilters.nama) {
+      const q = colFilters.nama.toLowerCase();
+      list = list.filter(e => (e.user?.name ?? "").toLowerCase().includes(q));
+    }
+    if (colFilters.tanggal) {
+      list = list.filter(e => e.activity_date.includes(colFilters.tanggal));
+    }
     list = [...list].sort((a, b) => {
       let va: string, vb: string;
       if (sortKey === "activity_date") { va = a.activity_date; vb = b.activity_date; }
       else if (sortKey === "activity_title") { va = a.activity_title; vb = b.activity_title; }
+      else if (sortKey === "user_name") { va = a.user?.name ?? ""; vb = b.user?.name ?? ""; }
       else { va = a.location?.field_name ?? ""; vb = b.location?.field_name ?? ""; }
       return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
     });
     return list;
-  }, [rawEntries, search, sortKey, sortDir]);
+  }, [rawEntries, search, sortKey, sortDir, colFilters]);
 
   const createMutation = useMutation({
     mutationFn: (payload: object) => api.post("/v1/field-activities", payload),
@@ -216,15 +236,25 @@ export default function LogbookPage() {
         }
       />
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Cari judul, detail, lokasi, nama..."
-          className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-        />
+      {/* Search + filter toggle */}
+      <div className="flex items-center gap-2">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Cari judul, detail, lokasi, nama..."
+            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+          />
+        </div>
+        <button
+          onClick={() => { if (showColFilters) setColFilters({ judul: "", lokasi: "", nama: "", tanggal: "" }); setShowColFilters(v => !v); }}
+          className={`flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition ${showColFilters ? "bg-green-50 border-green-300 text-green-700" : "border-gray-300 text-gray-500 hover:bg-gray-50"}`}
+        >
+          <Filter className="w-3.5 h-3.5" />
+          Filter Kolom
+          {Object.values(colFilters).some(Boolean) && <span className="ml-1 px-1.5 py-0.5 bg-green-600 text-white text-[10px] rounded-full">{Object.values(colFilters).filter(Boolean).length}</span>}
+        </button>
       </div>
 
       {/* Table */}
@@ -251,12 +281,25 @@ export default function LogbookPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("location")}>
                     <span className="flex items-center gap-1">Lokasi <SortIcon col="location" /></span>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Nama</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("user_name")}>
+                    <span className="flex items-center gap-1">Nama <SortIcon col="user_name" /></span>
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort("activity_date")}>
                     <span className="flex items-center gap-1">Tanggal <SortIcon col="activity_date" /></span>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-20">Aksi</th>
                 </tr>
+                {showColFilters && (
+                  <tr className="bg-white border-b border-gray-100">
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5"><input value={colFilters.judul} onChange={e => setColFilter("judul", e.target.value)} placeholder="Filter judul..." className="w-full px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500" /></td>
+                    <td className="px-2 py-1.5" />
+                    <td className="px-2 py-1.5"><input value={colFilters.lokasi} onChange={e => setColFilter("lokasi", e.target.value)} placeholder="Filter lokasi..." className="w-full px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500" /></td>
+                    <td className="px-2 py-1.5"><input value={colFilters.nama} onChange={e => setColFilter("nama", e.target.value)} placeholder="Filter nama..." className="w-full px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500" /></td>
+                    <td className="px-2 py-1.5"><input value={colFilters.tanggal} onChange={e => setColFilter("tanggal", e.target.value)} placeholder="YYYY-MM-DD" className="w-full px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500" /></td>
+                    <td className="px-2 py-1.5" />
+                  </tr>
+                )}
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {entries.map(entry => {

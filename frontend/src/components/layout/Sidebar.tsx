@@ -38,7 +38,7 @@ const GROUP_ACCESS: Record<string, string[]> = {
   Utama: ["super_admin", "researcher", "principal_researcher"],
   "Master Data": ["super_admin", "researcher", "principal_researcher"],
   Pengamatan: ["super_admin", "researcher", "field_team", "colaborator", "principal_researcher", "field_researcher", "storage_officer"],
-  Management: ["super_admin", "researcher", "field_team", "colaborator", "finance_staff", "principal_researcher"],
+  Management: ["super_admin", "researcher", "field_team", "finance_staff", "principal_researcher"],
   Administrasi: ["super_admin"],
 };
 
@@ -64,7 +64,7 @@ const navigation: { label: string; items: NavItem[] }[] = [
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
       {
         name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive,
-        allowedRoles: ["super_admin", "researcher", "principal_researcher", "storage_officer"],
+        allowedRoles: ["super_admin", "researcher", "colaborator", "principal_researcher", "storage_officer"],
       },
     ],
   },

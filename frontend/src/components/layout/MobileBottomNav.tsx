@@ -18,7 +18,7 @@ const ALL_MORE_ITEMS: MoreItem[] = [
   { name: "Master Data",  href: "/master-data",               emoji: "🗺️", roles: ["super_admin","researcher","principal_researcher"] },
   { name: "Penyakit",     href: "/disease",                   emoji: "🦠" },
   { name: "Log Aktivitas",href: "/pengamatan/logbook",         emoji: "📋" },
-  { name: "Storage",      href: "/pengamatan/storage-monitor", emoji: "🌡️", roles: ["super_admin","researcher","principal_researcher","storage_officer"] },
+  { name: "Storage",      href: "/pengamatan/storage-monitor", emoji: "🌡️", roles: ["super_admin","researcher","colaborator","principal_researcher","storage_officer"] },
   { name: "Keuangan",     href: "/finance",                   emoji: "💰", roles: ["super_admin","finance_staff"] },
   { name: "Dokumen",      href: "/documents",                 emoji: "📄", roles: ["super_admin"] },
   { name: "Pengguna",     href: "/users",                     emoji: "👥", roles: ["super_admin"] },
@@ -46,11 +46,11 @@ export function MobileBottomNav() {
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 safe-area-inset-bottom">
         <div className="flex items-center justify-around h-16">
           {[
-            { name: "Beranda",    href: "/dashboard",              icon: LayoutDashboard },
-            { name: "Pengamatan", href: "/pengamatan/karakteristik", icon: Microscope },
-            { name: "Jadwal",     href: "/schedules",              icon: CalendarClock },
-            { name: "Inventaris", href: "/pengamatan/inventory",    icon: Boxes },
-          ].map((item) => {
+            { name: "Beranda",    href: "/dashboard",              icon: LayoutDashboard, roles: undefined as string[] | undefined },
+            { name: "Pengamatan", href: "/pengamatan/karakteristik", icon: Microscope, roles: undefined as string[] | undefined },
+            { name: "Jadwal",     href: "/schedules",              icon: CalendarClock, roles: undefined as string[] | undefined },
+            { name: "Inventaris", href: "/pengamatan/inventory",    icon: Boxes, roles: ["super_admin","researcher","field_team","principal_researcher","field_researcher","storage_officer","finance_staff"] },
+          ].filter(item => !item.roles || item.roles.includes(role)).map((item) => {
             const active = isActive(item.href);
             return (
               <Link

@@ -219,6 +219,7 @@ export default function DiseasePage() {
     {
       header: "Trial / Lokasi",
       id: "trial_env",
+      accessorFn: (row) => `${row.trial?.trial_code ?? ""} ${row.environment?.location?.field_name ?? ""} ${row.environment?.season?.season_name ?? ""}`,
       cell: ({ row }) => (
         <div>
           <p className="font-medium text-sm">{row.original.trial?.trial_code}</p>
@@ -231,6 +232,7 @@ export default function DiseasePage() {
     {
       header: "Penyakit",
       id: "disease",
+      accessorFn: (row) => row.diseaseType?.disease_name ?? "",
       cell: ({ row }) => {
         const typeIds = row.original.disease_type_ids;
         const allTypes = (diseaseTypes as unknown as DiseaseType[] | undefined) ?? [];

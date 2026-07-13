@@ -271,6 +271,7 @@ export default function FinancePage() {
     {
       header: "Kategori",
       id: "cat",
+      accessorFn: (row) => (row.category as { category_name?: string } | undefined)?.category_name ?? (row as Expense & { category_name_custom?: string }).category_name_custom ?? "",
       cell: ({ row }) => {
         const cat = row.original.category;
         const custom = (row.original as Expense & { category_name_custom?: string }).category_name_custom;
@@ -282,6 +283,7 @@ export default function FinancePage() {
     {
       header: "Research Plan",
       id: "trial",
+      accessorFn: (row) => row.trial?.trial_code ?? "",
       cell: ({ row }) => <span className="text-xs">{row.original.trial?.trial_code ?? "—"}</span>,
     },
     {
@@ -483,7 +485,7 @@ export default function FinancePage() {
                   { header: "Nama Anggaran", accessorKey: "budget_name" },
                   { header: "Sumber Dana", accessorKey: "funding_source" },
                   { header: "Total", accessorKey: "total_amount", cell: ({ getValue }) => <span className="font-semibold">{formatCurrency(getValue() as number)}</span> },
-                  { header: "Masa Berlaku", id: "period", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.start_date)}{row.original.end_date ? ` – ${formatDate(row.original.end_date)}` : ""}</span> },
+                  { header: "Masa Berlaku", id: "period", accessorKey: "start_date", cell: ({ row }) => <span className="text-xs">{formatDate(row.original.start_date)}{row.original.end_date ? ` – ${formatDate(row.original.end_date)}` : ""}</span> },
                   { header: "Status", accessorKey: "status", cell: ({ getValue }) => <StatusBadge status={getValue() as string} /> },
                   { header: "Aksi", id: "budgetAct", cell: ({ row }) => (
                     <div className="flex items-center gap-1">

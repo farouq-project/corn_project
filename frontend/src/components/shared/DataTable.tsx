@@ -5,11 +5,14 @@ import {
   getCoreRowModel,
   getFilteredRowModel,
   getPaginationRowModel,
+  getSortedRowModel,
   flexRender,
   type ColumnDef,
+  type ColumnFiltersState,
   type RowSelectionState,
+  type SortingState,
 } from "@tanstack/react-table";
-import { ChevronLeft, ChevronRight, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, Trash2, ChevronsUpDown, ChevronUp, ChevronDown, Filter } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +44,16 @@ export function DataTable<TData>({
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [showColumnFilters, setShowColumnFilters] = useState(false);
 
   const selectable = !!onBulkDelete;
 
   const checkboxCol: ColumnDef<TData, unknown> = {
     id: "__select__",
+    enableSorting: false,
+    enableColumnFilter: false,
     header: ({ table }) => (
       <input
         type="checkbox"
@@ -74,12 +82,15 @@ export function DataTable<TData>({
   const table = useReactTable({
     data,
     columns: allColumns,
-    state: { globalFilter, rowSelection },
+    state: { globalFilter, rowSelection, sorting, columnFilters },
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
+    onSortingChange: setSorting,
+    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    getSortedRowModel: getSortedRowModel(),
     enableRowSelection: selectable,
     getRowId: getRowId ?? ((row, idx) => String((row as { id?: unknown }).id ?? idx)),
     initialState: { pagination: { pageSize: defaultPageSize ?? 10 } },
@@ -95,10 +106,16 @@ export function DataTable<TData>({
     setRowSelection({});
   };
 
+  const hasFilterableColumns = table.getAllLeafColumns().some(
+    (col) => col.getCanFilter() && col.id !== "__select__"
+  );
+
+  const activeFilterCount = columnFilters.length;
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -108,6 +125,31 @@ export function DataTable<TData>({
             className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
           />
         </div>
+
+        {hasFilterableColumns && (
+          <button
+            onClick={() => {
+              if (showColumnFilters) {
+                setColumnFilters([]);
+              }
+              setShowColumnFilters((v) => !v);
+            }}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition",
+              showColumnFilters
+                ? "bg-green-50 border-green-300 text-green-700"
+                : "border-gray-200 text-gray-500 hover:bg-gray-50"
+            )}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filter Kolom
+            {activeFilterCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 bg-green-600 text-white text-[10px] rounded-full font-medium">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+        )}
 
         {selectable && selectedCount > 0 && (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-200 rounded-lg">
@@ -135,19 +177,62 @@ export function DataTable<TData>({
           <thead className="bg-gray-50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className={cn(
-                      "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider",
-                      header.id === "__select__" && "w-10 px-3"
-                    )}
-                  >
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) => {
+                  const canSort = header.column.getCanSort();
+                  const sortDir = header.column.getIsSorted();
+                  return (
+                    <th
+                      key={header.id}
+                      className={cn(
+                        "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap",
+                        header.id === "__select__" && "w-10 px-3",
+                        canSort && "cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                      )}
+                      onClick={canSort ? () => header.column.toggleSorting() : undefined}
+                    >
+                      {header.isPlaceholder ? null : (
+                        <div className="flex items-center gap-1">
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {canSort && (
+                            <span className="ml-0.5 flex-shrink-0">
+                              {sortDir === "asc" ? (
+                                <ChevronUp className="w-3.5 h-3.5 text-green-600" />
+                              ) : sortDir === "desc" ? (
+                                <ChevronDown className="w-3.5 h-3.5 text-green-600" />
+                              ) : (
+                                <ChevronsUpDown className="w-3 h-3 text-gray-300" />
+                              )}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
+            {showColumnFilters && (
+              <tr className="bg-white">
+                {table.getHeaderGroups()[0]?.headers.map((header) => (
+                  <td
+                    key={header.id}
+                    className={cn(
+                      "px-2 py-1.5 border-b border-gray-100",
+                      header.id === "__select__" && "px-3"
+                    )}
+                  >
+                    {header.column.getCanFilter() ? (
+                      <input
+                        value={(header.column.getFilterValue() as string) ?? ""}
+                        onChange={(e) => header.column.setFilterValue(e.target.value || undefined)}
+                        placeholder="Filter..."
+                        className="w-full px-2 py-1 border border-gray-200 rounded text-xs text-gray-700 focus:outline-none focus:ring-1 focus:ring-green-500 min-w-[60px]"
+                      />
+                    ) : null}
+                  </td>
+                ))}
+              </tr>
+            )}
           </thead>
           <tbody className="bg-white divide-y divide-gray-100">
             {isLoading ? (

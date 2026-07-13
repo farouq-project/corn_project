@@ -38,6 +38,7 @@ export default function DataPengamatanPage() {
   // Multi-sample state per characteristic in wizard step 3
   const [charSamples, setCharSamples] = useState<Record<string, string[]>>({});
   const { user } = useAuthStore();
+  const canEdit = !user?.roles?.includes("colaborator");
   // eslint-disable-next-line @typescript-eslint/no-unused-vars — charValues replaced by charSamples
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState<1|2|3>(1);
@@ -254,11 +255,8 @@ export default function DataPengamatanPage() {
       <PageHeader
         title="Data Pengamatan"
         description="Entri data pengamatan fenotipe per plot/replikasi, mengikuti format spreadsheet lapangan"
-        actions={
+        actions={canEdit ? (
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => setShowDeleted(v => !v)} className={`flex items-center gap-2 px-3 py-2 border text-sm font-medium rounded-lg transition ${showDeleted ? "border-red-300 text-red-700 bg-red-50" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-              <Undo2 className="w-4 h-4" /> Sampah
-            </button>
             <button onClick={() => setShowImport(v => !v)} className="flex items-center gap-2 px-3 py-2 border border-green-200 text-green-700 text-sm font-medium rounded-lg hover:bg-green-50 transition">
               <Upload className="w-4 h-4" /> Import
             </button>
@@ -266,7 +264,7 @@ export default function DataPengamatanPage() {
               <Plus className="w-4 h-4" /> Tambah Baris
             </button>
           </div>
-        }
+        ) : undefined}
       />
 
       {/* ── Inline import panel ── */}
@@ -688,7 +686,7 @@ export default function DataPengamatanPage() {
               <div className="flex gap-2 pt-2 border-t">
                 <button onClick={() => setViewingRecord(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
                 <button onClick={() => { setHistoryRecord(viewingRecord); setViewingRecord(null); }} className="px-4 py-2 border border-blue-200 text-blue-600 rounded-lg text-sm hover:bg-blue-50 flex items-center gap-1"><History className="w-4 h-4"/>Riwayat</button>
-                <button onClick={() => { if(confirm(`Hapus baris Plot ${viewingRecord.plot_no} R${viewingRecord.replication}?`)) { deleteRecordMutation.mutate(viewingRecord.id); setViewingRecord(null); } }} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center gap-1"><Trash2 className="w-4 h-4"/>Hapus</button>
+                {canEdit && <button onClick={() => { if(confirm(`Hapus baris Plot ${viewingRecord.plot_no} R${viewingRecord.replication}?`)) { deleteRecordMutation.mutate(viewingRecord.id); setViewingRecord(null); } }} className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center gap-1"><Trash2 className="w-4 h-4"/>Hapus</button>}
               </div>
             </div>
           </div>

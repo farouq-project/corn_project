@@ -132,10 +132,14 @@ export default function InventoryPage() {
 
   const { data: usersData } = useQuery({
     queryKey: ["users-for-borrow"],
-    queryFn: () => api.get<{data: Array<{id: number; name: string}>}>("/v1/users?per_page=200").then(r => r.data),
+    queryFn: () => api.get<{data: Array<{id: number; name: string; roles?: string[]}>}>("/v1/users?per_page=200").then(r => r.data),
     staleTime: 300000,
   });
-  const userNames: string[] = (usersData?.data ?? []).map(u => u.name);
+  const allUsers = usersData?.data ?? [];
+  const userNames: string[] = allUsers.map(u => u.name);
+  const lenderNames: string[] = allUsers
+    .filter(u => u.roles?.some(r => ["super_admin", "researcher", "principal_researcher"].includes(r)))
+    .map(u => u.name);
 
   const createMutation = useMutation({
     mutationFn: (d: Partial<InventoryItem>) => api.post("/v1/inventory-items", d),
@@ -291,7 +295,7 @@ export default function InventoryPage() {
     },
     { header: "Nama Item", accessorKey: "name", cell: ({getValue}) => <span className="font-medium text-gray-800">{getValue() as string}</span> },
     { header: "Kategori", accessorKey: "category", cell: ({getValue}) => <span className="text-xs text-gray-500">{(getValue() as string) || "—"}</span> },
-    { header: "Jml", id: "qty", cell: ({row}) => <span className="text-sm">{Math.round(row.original.quantity)} {row.original.unit ?? ""}</span> },
+    { header: "Jml", id: "qty", accessorKey: "quantity", cell: ({row}) => <span className="text-sm">{Math.round(row.original.quantity)} {row.original.unit ?? ""}</span> },
     { header: "Kondisi", accessorKey: "condition", cell: ({getValue}) => {
       const v = getValue() as string;
       return <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", v==="good"?"bg-green-50 text-green-700":v==="damaged"?"bg-red-50 text-red-700":v==="lost"?"bg-gray-100 text-gray-600":"bg-yellow-50 text-yellow-700")}>{CONDITION_LABEL[v]}</span>;
@@ -332,7 +336,7 @@ export default function InventoryPage() {
       return <span className="font-mono text-xs text-orange-700">{match ? match[0].slice(1,-1) : `PJM-${row.original.id}`}</span>;
     }},
     { header: "Item", accessorKey: "name", cell: ({getValue}) => <span className="font-medium">{getValue() as string}</span> },
-    { header: "Nama Peminjam", id: "borrower_name_col", cell: ({row}) => (
+    { header: "Nama Peminjam", id: "borrower_name_col", accessorKey: "borrower_name", cell: ({row}) => (
       <div className="flex items-center gap-2">
         {row.original.borrower_photos?.[0] ? (
           <img src={row.original.borrower_photos[0]} alt="borrower" className="w-7 h-7 rounded-full object-cover border border-gray-200 flex-shrink-0" />
@@ -343,10 +347,10 @@ export default function InventoryPage() {
         </div>
       </div>
     )},
-    { header: "Nama Pemberi Pinjam", id: "lender_name_col", cell: ({row}) => (
+    { header: "Nama Pemberi Pinjam", id: "lender_name_col", accessorKey: "lender_name", cell: ({row}) => (
       <span className="text-sm text-gray-700">{row.original.lender_name ?? <span className="text-gray-300">—</span>}</span>
     )},
-    { header: "Jml", id: "borrow_qty", cell: ({row}) => (
+    { header: "Jml", id: "borrow_qty", accessorKey: "borrow_quantity", cell: ({row}) => (
       <span className="text-sm">{row.original.borrow_quantity ?? "—"} {row.original.unit ?? ""}</span>
     )},
     { header: "Tgl Pinjam", accessorKey: "loan_date", cell: ({getValue}) => <span className="text-xs">{getValue() ? formatDate(getValue() as string) : "—"}</span> },
@@ -391,21 +395,21 @@ export default function InventoryPage() {
       },
     },
     { header: "Item", accessorKey: "item_name", cell: ({getValue}) => <span className="font-medium text-gray-800">{getValue() as string}</span> },
-    { header: "Peminjam", id: "h_borrower", cell: ({row}) => (
+    { header: "Peminjam", id: "h_borrower", accessorKey: "borrower_name", cell: ({row}) => (
       <div>
         <p className="text-sm font-medium text-gray-800">{row.original.borrower_name}</p>
         {row.original.borrower_contact && <p className="text-xs text-gray-400">{row.original.borrower_contact}</p>}
       </div>
     )},
-    { header: "Pemberi Pinjam", id: "h_lender", cell: ({row}) => (
+    { header: "Pemberi Pinjam", id: "h_lender", accessorKey: "lender_name", cell: ({row}) => (
       <span className="text-sm text-gray-600">{row.original.lender_name ?? "—"}</span>
     )},
-    { header: "Jml Dipinjam", id: "h_qty", cell: ({row}) => <span className="text-sm">{row.original.borrow_quantity}</span> },
-    { header: "Jml Kembali", id: "h_ret_qty", cell: ({row}) => <span className="text-sm">{row.original.returned_quantity ?? "—"}</span> },
-    { header: "Tgl Kembali", id: "h_return", cell: ({row}) => (
+    { header: "Jml Dipinjam", id: "h_qty", accessorKey: "borrow_quantity", cell: ({row}) => <span className="text-sm">{row.original.borrow_quantity}</span> },
+    { header: "Jml Kembali", id: "h_ret_qty", accessorKey: "returned_quantity", cell: ({row}) => <span className="text-sm">{row.original.returned_quantity ?? "—"}</span> },
+    { header: "Tgl Kembali", id: "h_return", accessorKey: "return_date", cell: ({row}) => (
       <span className="text-xs text-green-700 font-medium">{formatDate(row.original.return_date)}</span>
     )},
-    { header: "Kondisi", id: "h_cond", cell: ({row}) => (
+    { header: "Kondisi", id: "h_cond", accessorKey: "condition_on_return", cell: ({row}) => (
       <span className="text-xs text-gray-500">{CONDITION_LABEL[row.original.condition_on_return ?? "good"] ?? "—"}</span>
     )},
     {
@@ -604,6 +608,9 @@ export default function InventoryPage() {
               <datalist id="inv-user-names">
                 {userNames.map((n, i) => <option key={i} value={n} />)}
               </datalist>
+              <datalist id="inv-lender-names">
+                {lenderNames.map((n, i) => <option key={i} value={n} />)}
+              </datalist>
 
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Peminjam <span className="text-red-500">*</span></label>
                 <input value={borrowForm.name} onChange={e=>setBorrowForm(p=>({...p,name:e.target.value}))}
@@ -611,7 +618,7 @@ export default function InventoryPage() {
 
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Pemberi Pinjam <span className="text-red-500">*</span></label>
                 <input value={borrowForm.lender} onChange={e=>setBorrowForm(p=>({...p,lender:e.target.value}))}
-                  list="inv-user-names" className={inpReq} placeholder="Nama petugas yang memberikan pinjaman" /></div>
+                  list="inv-lender-names" className={inpReq} placeholder="Nama petugas yang memberikan pinjaman" /></div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kontak <span className="text-red-500">*</span></label>
