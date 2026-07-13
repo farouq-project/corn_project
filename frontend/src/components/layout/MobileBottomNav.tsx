@@ -2,39 +2,62 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Microscope, CalendarClock, Wallet, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Microscope, CalendarClock, Boxes, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 
-const mainItems = [
-  { name: "Beranda", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Pengamatan", href: "/phenotyping/data-pengamatan", icon: Microscope },
-  { name: "Jadwal", href: "/schedules", icon: CalendarClock },
-  { name: "Keuangan", href: "/finance", icon: Wallet },
+interface MoreItem {
+  name: string;
+  href: string;
+  emoji: string;
+  roles?: string[]; // if set, only show for these roles
+}
+
+const ALL_MORE_ITEMS: MoreItem[] = [
+  { name: "Master Data",  href: "/master-data",               emoji: "🗺️", roles: ["super_admin","researcher","principal_researcher"] },
+  { name: "Penyakit",     href: "/disease",                   emoji: "🦠" },
+  { name: "Log Aktivitas",href: "/pengamatan/logbook",         emoji: "📋" },
+  { name: "Storage",      href: "/pengamatan/storage-monitor", emoji: "🌡️", roles: ["super_admin","researcher","principal_researcher","storage_officer"] },
+  { name: "Keuangan",     href: "/finance",                   emoji: "💰", roles: ["super_admin","finance_staff"] },
+  { name: "Dokumen",      href: "/documents",                 emoji: "📄", roles: ["super_admin"] },
+  { name: "Pengguna",     href: "/users",                     emoji: "👥", roles: ["super_admin"] },
+  { name: "Audit",        href: "/audit",                     emoji: "📊", roles: ["super_admin"] },
+  { name: "Data Rata²",   href: "/phenotyping/data-rata-rata", emoji: "📈", roles: ["super_admin","researcher","principal_researcher"] },
+  { name: "Pengaturan",   href: "/settings",                  emoji: "⚙️" },
 ];
 
 export function MobileBottomNav() {
   const pathname = usePathname();
   const [showMore, setShowMore] = useState(false);
   const { user } = useAuthStore();
+  const role = (user?.roles?.[0] as string) ?? "";
 
   const isActive = (href: string) =>
     href === "/dashboard" ? pathname === href : pathname.startsWith(href);
+
+  const visibleMoreItems = ALL_MORE_ITEMS.filter(
+    (item) => !item.roles || item.roles.includes(role)
+  );
 
   return (
     <>
       {/* Bottom nav bar */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-gray-200 safe-area-inset-bottom">
         <div className="flex items-center justify-around h-16">
-          {mainItems.map((item) => {
+          {[
+            { name: "Beranda",    href: "/dashboard",              icon: LayoutDashboard },
+            { name: "Pengamatan", href: "/pengamatan/karakteristik", icon: Microscope },
+            { name: "Jadwal",     href: "/schedules",              icon: CalendarClock },
+            { name: "Inventaris", href: "/pengamatan/inventory",    icon: Boxes },
+          ].map((item) => {
             const active = isActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition flex-1",
+                  "flex flex-col items-center gap-1 px-3 py-2 rounded-xl transition flex-1 relative",
                   active ? "text-green-600" : "text-gray-400"
                 )}
               >
@@ -62,19 +85,7 @@ export function MobileBottomNav() {
             <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mb-4" />
             <p className="text-xs font-semibold text-gray-400 uppercase mb-3 px-1">Semua Menu</p>
             <div className="grid grid-cols-4 gap-3">
-              {[
-                { name: "Master Data", href: "/master-data", emoji: "🗺️" },
-                { name: "Inventaris", href: "/pengamatan/inventory", emoji: "📦" },
-                { name: "Penyakit", href: "/disease", emoji: "🦠" },
-                { name: "Log Aktivitas", href: "/pengamatan/logbook", emoji: "📋" },
-                { name: "Storage", href: "/pengamatan/storage-monitor", emoji: "🌡️" },
-                { name: "Dokumen", href: "/documents", emoji: "📄" },
-                { name: "Genotype", href: "/genotypes", emoji: "🌽" },
-                { name: "Pengguna", href: "/users", emoji: "👥" },
-                { name: "Audit", href: "/audit", emoji: "📊" },
-                { name: "Data Rata²", href: "/phenotyping/data-rata-rata", emoji: "📈" },
-                { name: "Pengaturan", href: "/settings", emoji: "⚙️" },
-              ].map((item) => (
+              {visibleMoreItems.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

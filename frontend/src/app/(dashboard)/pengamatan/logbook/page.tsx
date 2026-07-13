@@ -2,7 +2,7 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X, BookOpen, Camera, Trash2, Edit2, Search, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, X, BookOpen, Camera, Trash2, Edit2, Search, ChevronUp, ChevronDown, Download } from "lucide-react";
 import { toast } from "sonner";
 import api, { getApiErrorMessage } from "@/lib/axios";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -32,6 +32,7 @@ export default function LogbookPage() {
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [locationId, setLocationId] = useState<number | null>(null);
   const [details, setDetails] = useState<string[]>([""]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -47,6 +48,13 @@ export default function LogbookPage() {
       params: { activity_type: "logbook", per_page: 200 },
     }).then(r => r.data),
   });
+
+  const { data: locData } = useQuery({
+    queryKey: ["locations-list"],
+    queryFn: () => api.get<{ data: Array<{ id: number; field_name: string; field_code: string }> }>("/v1/locations?per_page=200").then(r => r.data),
+    staleTime: 60000,
+  });
+  const locations = locData?.data ?? [];
   const rawEntries: LogEntry[] = data?.data ?? [];
 
   const entries = useMemo(() => {
@@ -112,6 +120,7 @@ export default function LogbookPage() {
     setEditingEntry(null);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
+    setLocationId(null);
     setDetails([""]);
     setPhotoUrls([]);
     setIsModalOpen(true);
@@ -121,6 +130,7 @@ export default function LogbookPage() {
     setEditingEntry(entry);
     setTitle(entry.activity_title);
     setDate(entry.activity_date);
+    setLocationId(entry.location?.id ?? null);
     setDetails(entry.description?.split("\n").filter(Boolean) ?? [""]);
     setPhotoUrls(entry.photos ?? []);
     setIsModalOpen(true);
@@ -131,8 +141,31 @@ export default function LogbookPage() {
     setEditingEntry(null);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
+    setLocationId(null);
     setDetails([""]);
     setPhotoUrls([]);
+  };
+
+  const downloadCSV = () => {
+    const header = ["Kode", "Judul", "Detail Aktivitas", "Lokasi", "Nama Petugas", "Tanggal"];
+    const rows = entries.map(e => [
+      e.activity_code,
+      e.activity_title,
+      e.description?.replace(/\n/g, "; ") ?? "",
+      e.location?.field_name ?? "",
+      e.user?.name ?? "",
+      e.activity_date,
+    ]);
+    const csv = [header, ...rows].map(r =>
+      r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+    ).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `log-aktivitas-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const submit = () => {
@@ -140,6 +173,7 @@ export default function LogbookPage() {
     if (!filledDetails.length) { toast.error("Tambahkan minimal satu detail aktivitas"); return; }
     const payload = {
       activity_type: "logbook",
+      location_id: locationId || undefined,
       activity_title: title.trim() || `Log #${rawEntries.length + 1}`,
       description: filledDetails.join("\n"),
       activity_date: date,
@@ -166,12 +200,20 @@ export default function LogbookPage() {
       <PageHeader
         title="Log Aktivitas Lapang"
         description="Catatan kegiatan lapang harian dengan bukti foto"
-        actions={canEdit ? (
-          <button onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
-            <Plus className="w-4 h-4" /> Tambah Log
-          </button>
-        ) : null}
+        actions={
+          <div className="flex items-center gap-2">
+            <button onClick={downloadCSV}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-200 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition">
+              <Download className="w-4 h-4" /> Export Excel
+            </button>
+            {canEdit && (
+              <button onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition">
+                <Plus className="w-4 h-4" /> Tambah Log
+              </button>
+            )}
+          </div>
+        }
       />
 
       {/* Search */}
@@ -209,7 +251,7 @@ export default function LogbookPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("location")}>
                     <span className="flex items-center gap-1">Lokasi <SortIcon col="location" /></span>
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Petugas</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Nama</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort("activity_date")}>
                     <span className="flex items-center gap-1">Tanggal <SortIcon col="activity_date" /></span>
                   </th>
@@ -306,6 +348,22 @@ export default function LogbookPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tanggal *</label>
                   <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi</label>
+                  <select value={locationId ?? ""} onChange={e => setLocationId(e.target.value ? Number(e.target.value) : null)} className={inputCls}>
+                    <option value="">— Pilih Lokasi —</option>
+                    {locations.map(l => (
+                      <option key={l.id} value={l.id}>{l.field_name} ({l.field_code})</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Petugas</label>
+                  <input value={user?.name ?? ""} readOnly className={inputCls + " bg-gray-50 text-gray-400 cursor-not-allowed"} />
                 </div>
               </div>
 

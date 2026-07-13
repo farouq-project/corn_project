@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Menu, Search, User, Info } from "lucide-react";
+import { Bell, LogOut, Menu, Search, User, Info, Clock, UserPlus } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import { useAuthStore } from "@/store/authStore";
 import { authService } from "@/services/auth.service";
 import { cn } from "@/lib/utils";
 import { InstallIconButton } from "@/components/pwa/InstallIconButton";
+import api from "@/lib/axios";
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -19,6 +21,19 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const isSuperAdmin = user?.roles?.includes("super_admin");
+
+  // Poll pending users for super admin
+  const { data: pendingData } = useQuery({
+    queryKey: ["topbar-pending-users"],
+    queryFn: () => api.get<{ data: Array<{ id: number; name: string; email: string; created_at: string }> }>("/v1/users/pending").then(r => r.data),
+    enabled: !!isSuperAdmin,
+    refetchInterval: 60000, // poll every minute
+    staleTime: 30000,
+  });
+  const pendingUsers = pendingData?.data ?? [];
+  const pendingCount = pendingUsers.length;
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -83,23 +98,66 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             className="relative p-2 rounded-lg hover:bg-gray-100 transition text-gray-500 hover:text-gray-700"
           >
             <Bell className="w-5 h-5" />
+            {isSuperAdmin && pendingCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                {pendingCount > 9 ? "9+" : pendingCount}
+              </span>
+            )}
           </button>
 
           {showNotif && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowNotif(false)} />
-              <div className="absolute right-0 mt-1 w-72 bg-white rounded-xl shadow-lg border border-gray-100 z-20 overflow-hidden">
+              <div className="absolute right-0 mt-1 w-80 bg-white rounded-xl shadow-lg border border-gray-100 z-20 overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                   <p className="text-sm font-semibold text-gray-800">Notifikasi</p>
-                  <span className="text-xs text-gray-400">Hari ini</span>
+                  {isSuperAdmin && pendingCount > 0 && (
+                    <span className="bg-red-100 text-red-600 text-xs font-semibold px-2 py-0.5 rounded-full">
+                      {pendingCount} menunggu
+                    </span>
+                  )}
                 </div>
-                <div className="py-8 px-4 text-center">
-                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
-                    <Info className="w-5 h-5 text-gray-400" />
+
+                {isSuperAdmin && pendingCount > 0 ? (
+                  <div>
+                    <div className="px-4 py-2 bg-amber-50 border-b border-amber-100">
+                      <div className="flex items-center gap-2">
+                        <UserPlus className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <p className="text-xs font-semibold text-amber-700">
+                          {pendingCount} akun baru menunggu persetujuan
+                        </p>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-gray-50 max-h-60 overflow-y-auto">
+                      {pendingUsers.slice(0, 5).map((pu) => (
+                        <div key={pu.id} className="flex items-center gap-3 px-4 py-3">
+                          <div className="w-7 h-7 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-semibold text-amber-700">{pu.name.charAt(0)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{pu.name}</p>
+                            <p className="text-xs text-gray-400 truncate">{pu.email}</p>
+                          </div>
+                          <Clock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { setShowNotif(false); router.push("/users"); }}
+                      className="w-full py-2.5 text-xs font-medium text-green-600 hover:bg-green-50 transition border-t border-gray-100"
+                    >
+                      Kelola Pengguna →
+                    </button>
                   </div>
-                  <p className="text-sm text-gray-500">Tidak ada notifikasi baru</p>
-                  <p className="text-xs text-gray-400 mt-1">Notifikasi jadwal & aktivitas akan muncul di sini</p>
-                </div>
+                ) : (
+                  <div className="py-8 px-4 text-center">
+                    <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                      <Info className="w-5 h-5 text-gray-400" />
+                    </div>
+                    <p className="text-sm text-gray-500">Tidak ada notifikasi baru</p>
+                    <p className="text-xs text-gray-400 mt-1">Notifikasi aktivitas akan muncul di sini</p>
+                  </div>
+                )}
               </div>
             </>
           )}

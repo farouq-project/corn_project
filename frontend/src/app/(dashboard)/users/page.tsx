@@ -95,7 +95,15 @@ export default function UsersPage() {
     queryKey: ["users"],
     queryFn: () => api.get<{ data: User[] }>("/v1/users", { params: { per_page: 100 } }).then((r) => r.data),
   });
-  const users = data?.data ?? [];
+  const [roleSort, setRoleSort] = useState<"asc" | "desc" | null>(null);
+  const rawUsers = data?.data ?? [];
+  const users = roleSort
+    ? [...rawUsers].sort((a, b) => {
+        const ra = getRoleLabel(roleName(a.roles?.[0]));
+        const rb = getRoleLabel(roleName(b.roles?.[0]));
+        return roleSort === "asc" ? ra.localeCompare(rb) : rb.localeCompare(ra);
+      })
+    : rawUsers;
 
   const { data: pendingData, isLoading: pendingLoading } = useQuery({
     queryKey: ["users-pending"],
@@ -195,8 +203,18 @@ export default function UsersPage() {
       cell: ({ getValue }) => <span className="text-xs">{(getValue() as string) ?? "-"}</span>,
     },
     {
-      header: "Role",
       id: "role",
+      header: () => (
+        <button
+          onClick={() => setRoleSort(s => s === "asc" ? "desc" : s === "desc" ? null : "asc")}
+          className="flex items-center gap-1 text-xs font-semibold text-gray-500 hover:text-gray-700 transition"
+        >
+          Role
+          <span className="opacity-50 select-none">
+            {roleSort === "asc" ? "↑" : roleSort === "desc" ? "↓" : "↕"}
+          </span>
+        </button>
+      ),
       cell: ({ row }) => {
         const role = roleName(row.original.roles?.[0]);
         return role ? (

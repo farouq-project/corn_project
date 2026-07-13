@@ -549,36 +549,46 @@ export default function MasterDataPage() {
           {activeTab === "genotypes" && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3">
-                {/* Jenis Jagung filter chips */}
+                {/* Jenis Jagung filter — dropdown + chips */}
                 {(() => {
                   const allJenis = genotypes.map(g => getJenisJagung(g.genotype_code, jenisRules));
                   const counts: Record<string, number> = {};
                   allJenis.forEach(j => { counts[j] = (counts[j] ?? 0) + 1; });
                   const labels = [...new Set(allJenis)].sort();
                   return (
-                    <div className="flex flex-wrap items-center gap-1.5 flex-1">
-                      <span className="text-xs text-gray-400 mr-0.5">Jenis:</span>
-                      <button
-                        onClick={() => setJenisFilter(null)}
-                        className={cn("text-xs px-2.5 py-1 rounded-full border transition", jenisFilter === null ? "bg-gray-800 text-white border-gray-800" : "border-gray-200 text-gray-500 hover:bg-gray-50")}
-                      >
-                        Semua ({genotypes.length})
-                      </button>
-                      {labels.map(label => {
-                        const color = JENIS_COLORS[label] ?? "bg-gray-100 text-gray-500";
-                        const active = jenisFilter === label;
-                        return (
-                          <button key={label}
-                            onClick={() => setJenisFilter(active ? null : label)}
-                            className={cn("text-xs px-2.5 py-1 rounded-full border transition font-medium", active ? color + " border-transparent ring-2 ring-offset-1 ring-gray-400" : color + " opacity-70 hover:opacity-100 border-transparent")}
-                          >
-                            {label} ({counts[label] ?? 0})
-                          </button>
-                        );
-                      })}
+                    <div className="flex flex-wrap items-center gap-2 flex-1">
+                      {/* Dropdown filter */}
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-400 whitespace-nowrap">Jenis Jagung:</label>
+                        <select
+                          value={jenisFilter ?? ""}
+                          onChange={e => setJenisFilter(e.target.value || null)}
+                          className="px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                        >
+                          <option value="">Semua ({genotypes.length})</option>
+                          {labels.map(label => (
+                            <option key={label} value={label}>{label} ({counts[label] ?? 0})</option>
+                          ))}
+                        </select>
+                      </div>
+                      {/* Color chips for quick filter */}
+                      <div className="flex flex-wrap items-center gap-1">
+                        {labels.map(label => {
+                          const color = JENIS_COLORS[label] ?? "bg-gray-100 text-gray-500";
+                          const active = jenisFilter === label;
+                          return (
+                            <button key={label}
+                              onClick={() => setJenisFilter(active ? null : label)}
+                              className={cn("text-xs px-2 py-0.5 rounded-full transition font-medium", active ? color + " ring-2 ring-offset-1 ring-gray-400" : color + " opacity-60 hover:opacity-100")}
+                            >
+                              {label.replace("Hibrida ", "H. ")}
+                            </button>
+                          );
+                        })}
+                      </div>
                       <button
                         onClick={() => { setEditingRules([...jenisRules]); setShowJenisRuleModal(true); }}
-                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition ml-1"
+                        className="flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600 transition"
                         title="Atur logika klasifikasi"
                       >
                         <Settings2 className="w-3 h-3" /> Atur Logika

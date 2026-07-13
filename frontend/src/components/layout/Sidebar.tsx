@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import type React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -25,16 +26,23 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 
+interface NavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  allowedRoles?: string[];
+}
+
 // Groups visible per role (group label → allowed roles)
 const GROUP_ACCESS: Record<string, string[]> = {
   Utama: ["super_admin", "researcher", "principal_researcher"],
   "Master Data": ["super_admin", "researcher", "principal_researcher"],
   Pengamatan: ["super_admin", "researcher", "field_team", "colaborator", "principal_researcher", "field_researcher", "storage_officer"],
-  Keuangan: ["super_admin", "finance_staff"],
+  Management: ["super_admin", "researcher", "field_team", "colaborator", "finance_staff", "principal_researcher"],
   Administrasi: ["super_admin"],
 };
 
-const navigation = [
+const navigation: { label: string; items: NavItem[] }[] = [
   {
     label: "Utama",
     items: [
@@ -44,7 +52,7 @@ const navigation = [
   {
     label: "Master Data",
     items: [
-      { name: "Master Data", href: "/master-data", icon: Map }, // includes Research Plan (trials)
+      { name: "Master Data", href: "/master-data", icon: Map },
     ],
   },
   {
@@ -54,14 +62,20 @@ const navigation = [
       { name: "Penyakit", href: "/disease", icon: Bug },
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
-      { name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive },
-      { name: "Inventaris", href: "/pengamatan/inventory", icon: Boxes },
+      {
+        name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive,
+        allowedRoles: ["super_admin", "researcher", "principal_researcher", "storage_officer"],
+      },
     ],
   },
   {
-    label: "Keuangan",
+    label: "Management",
     items: [
-      { name: "Keuangan & Anggaran", href: "/finance", icon: Wallet },
+      {
+        name: "Keuangan & Anggaran", href: "/finance", icon: Wallet,
+        allowedRoles: ["super_admin", "finance_staff"],
+      },
+      { name: "Inventaris", href: "/pengamatan/inventory", icon: Boxes },
     ],
   },
   {
@@ -84,9 +98,15 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const userRole = (user?.roles?.[0] as string) ?? "";
-  const visibleNavigation = navigation.filter(
-    (group) => GROUP_ACCESS[group.label]?.includes(userRole) ?? true
-  );
+  const visibleNavigation = navigation
+    .filter((group) => GROUP_ACCESS[group.label]?.includes(userRole) ?? true)
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.allowedRoles || item.allowedRoles.includes(userRole)
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   // Close mobile drawer on navigation
   useEffect(() => {

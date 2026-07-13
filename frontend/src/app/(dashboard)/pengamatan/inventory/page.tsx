@@ -74,15 +74,18 @@ const emptyForm = (): Partial<InventoryItem> => ({
 
 export default function InventoryPage() {
   const { user } = useAuthStore();
-  const isSuperAdmin = user?.roles?.some((r: string | { name?: string }) =>
-    (typeof r === "string" ? r : (r as { name?: string }).name) === "super_admin"
-  );
-  const canEdit = !user?.roles?.includes("colaborator");
+  const roles: string[] = (user?.roles ?? []) as string[];
+  const isSuperAdmin = roles.includes("super_admin");
+  // canEdit: add/edit/delete items (super_admin + researcher)
+  const canEdit = roles.includes("super_admin") || roles.includes("researcher") || roles.includes("principal_researcher");
+  // canBorrow: can borrow items (all except colaborator)
+  const canBorrow = !roles.includes("colaborator");
 
   const [tab, setTab] = useState<"inventory" | "log" | "history">("inventory");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
   const [viewing, setViewing] = useState<InventoryItem | null>(null);
+  const [viewingHistory, setViewingHistory] = useState<LoanHistory | null>(null);
   const [form, setForm] = useState<Partial<InventoryItem>>(emptyForm());
   const [uploadingProd, setUploadingProd] = useState(false);
 
@@ -126,6 +129,13 @@ export default function InventoryPage() {
     enabled: tab === "history",
   });
   const historyItems: LoanHistory[] = historyData?.data ?? [];
+
+  const { data: usersData } = useQuery({
+    queryKey: ["users-for-borrow"],
+    queryFn: () => api.get<{data: Array<{id: number; name: string}>}>("/v1/users?per_page=200").then(r => r.data),
+    staleTime: 300000,
+  });
+  const userNames: string[] = (usersData?.data ?? []).map(u => u.name);
 
   const createMutation = useMutation({
     mutationFn: (d: Partial<InventoryItem>) => api.post("/v1/inventory-items", d),
@@ -211,8 +221,12 @@ export default function InventoryPage() {
   const submitBorrow = () => {
     if (!borrowingItem) return;
     if (!borrowForm.name.trim()) { toast.error("Nama peminjam wajib diisi"); return; }
+    if (!borrowForm.lender.trim()) { toast.error("Nama pemberi pinjam wajib diisi"); return; }
     if (!borrowForm.contact.trim()) { toast.error("Kontak wajib diisi"); return; }
     if (!borrowForm.expected_return_date) { toast.error("Rencana Kembali wajib diisi"); return; }
+    if (borrowForm.loan_date && borrowForm.expected_return_date < borrowForm.loan_date) {
+      toast.error("Rencana Kembali tidak boleh lebih awal dari Tanggal Pinjam"); return;
+    }
     if (borrowPhotos.length === 0) { toast.error("Foto peminjaman wajib diunggah"); return; }
     if (!borrowForm.quantity || borrowForm.quantity < 1) { toast.error("Jumlah pinjam minimal 1"); return; }
     const code = genBorrowCode();
@@ -233,7 +247,9 @@ export default function InventoryPage() {
 
   const submitReturn = () => {
     if (!returningItem) return;
+    const maxReturn = returningItem.borrow_quantity ?? Infinity;
     if (!returnQty || returnQty < 1) { toast.error("Jumlah dikembalikan minimal 1"); return; }
+    if (returnQty > maxReturn) { toast.error(`Jumlah dikembalikan maksimal ${maxReturn}`); return; }
     returnMutation.mutate({
       id: returningItem.id,
       d: {
@@ -293,7 +309,7 @@ export default function InventoryPage() {
         <div className="flex gap-1">
           <button onClick={() => setViewing(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-400"><Eye className="w-3.5 h-3.5"/></button>
           {canEdit && <button onClick={() => openEdit(row.original)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500"><Edit2 className="w-3.5 h-3.5"/></button>}
-          {canEdit && !row.original.borrower_name && row.original.condition === "good" && (
+          {canBorrow && !row.original.borrower_name && row.original.condition === "good" && (
             <button onClick={() => {
               setBorrowingItem(row.original);
               setBorrowPhotos([]);
@@ -360,9 +376,20 @@ export default function InventoryPage() {
   ];
 
   const historyColumns: ColumnDef<LoanHistory, unknown>[] = [
-    { header: "Kode Pinjam", id: "h_code", cell: ({row}) => (
-      <span className="font-mono text-xs text-gray-500">{row.original.borrow_code ?? `PJM-${row.original.id}`}</span>
-    )},
+    {
+      header: "Foto Kembali", id: "h_photo",
+      cell: ({row}) => {
+        const photos = row.original.return_photos ?? [];
+        return photos.length > 0 ? (
+          <img src={photos[0]} alt="return" className="w-10 h-10 rounded-lg object-cover border border-gray-200 cursor-pointer hover:opacity-80"
+            onClick={() => setViewingHistory(row.original)} />
+        ) : (
+          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center border border-gray-200">
+            <Camera className="w-4 h-4 text-gray-300" />
+          </div>
+        );
+      },
+    },
     { header: "Item", accessorKey: "item_name", cell: ({getValue}) => <span className="font-medium text-gray-800">{getValue() as string}</span> },
     { header: "Peminjam", id: "h_borrower", cell: ({row}) => (
       <div>
@@ -381,17 +408,22 @@ export default function InventoryPage() {
     { header: "Kondisi", id: "h_cond", cell: ({row}) => (
       <span className="text-xs text-gray-500">{CONDITION_LABEL[row.original.condition_on_return ?? "good"] ?? "—"}</span>
     )},
-    ...(isSuperAdmin ? [{
+    {
       header: "Aksi", id: "h_act",
-      cell: ({row}: {row: {original: LoanHistory}}) => (
-        <button
-          onClick={() => { if(confirm("Hapus riwayat ini?")) deleteHistoryMutation.mutate(row.original.id); }}
-          className="p-1.5 rounded hover:bg-red-50 text-red-400"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+      cell: ({row}) => (
+        <div className="flex items-center gap-1">
+          <button onClick={() => setViewingHistory(row.original)} className="p-1.5 rounded hover:bg-blue-50 text-blue-400" title="Preview">
+            <Eye className="w-3.5 h-3.5" />
+          </button>
+          {isSuperAdmin && (
+            <button onClick={() => { if(confirm("Hapus riwayat ini?")) deleteHistoryMutation.mutate(row.original.id); }}
+              className="p-1.5 rounded hover:bg-red-50 text-red-400">
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       ),
-    } as ColumnDef<LoanHistory, unknown>] : []),
+    },
   ];
 
   return (
@@ -447,7 +479,7 @@ export default function InventoryPage() {
             <DataTable data={items} columns={columns} isLoading={isLoading}
               searchPlaceholder="Cari nama, kategori, atau peminjam..." emptyMessage="Belum ada item inventaris."
               getRowId={r => String(r.id)}
-              onBulkDelete={rows => bulkDeleteMutation.mutate(rows.map(r => r.id))}
+              onBulkDelete={canEdit ? rows => bulkDeleteMutation.mutate(rows.map(r => r.id)) : undefined}
               isBulkDeleting={bulkDeleteMutation.isPending}
             />
           </div>
@@ -569,11 +601,17 @@ export default function InventoryPage() {
                 <span className="text-xs text-orange-500">— Kode peminjaman (otomatis)</span>
               </div>
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Peminjam *</label>
-                <input value={borrowForm.name} onChange={e=>setBorrowForm(p=>({...p,name:e.target.value}))} className={inp} placeholder="Nama lengkap" /></div>
+              <datalist id="inv-user-names">
+                {userNames.map((n, i) => <option key={i} value={n} />)}
+              </datalist>
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Pemberi Pinjam</label>
-                <input value={borrowForm.lender} onChange={e=>setBorrowForm(p=>({...p,lender:e.target.value}))} className={inp} placeholder="Nama petugas yang memberikan pinjaman" /></div>
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Peminjam <span className="text-red-500">*</span></label>
+                <input value={borrowForm.name} onChange={e=>setBorrowForm(p=>({...p,name:e.target.value}))}
+                  list="inv-user-names" className={inp} placeholder="Ketik nama atau pilih dari daftar" /></div>
+
+              <div><label className="block text-sm font-medium text-gray-700 mb-1">Nama Pemberi Pinjam <span className="text-red-500">*</span></label>
+                <input value={borrowForm.lender} onChange={e=>setBorrowForm(p=>({...p,lender:e.target.value}))}
+                  list="inv-user-names" className={inpReq} placeholder="Nama petugas yang memberikan pinjaman" /></div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Kontak <span className="text-red-500">*</span></label>
@@ -599,7 +637,7 @@ export default function InventoryPage() {
                   <input type="date" value={borrowForm.loan_date} onChange={e=>setBorrowForm(p=>({...p,loan_date:e.target.value}))} className={inp} /></div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Rencana Kembali <span className="text-red-500">*</span></label>
-                  <input type="date" value={borrowForm.expected_return_date} onChange={e=>setBorrowForm(p=>({...p,expected_return_date:e.target.value}))} className={inpReq} />
+                  <input type="date" value={borrowForm.expected_return_date} min={borrowForm.loan_date || undefined} onChange={e=>setBorrowForm(p=>({...p,expected_return_date:e.target.value}))} className={inpReq} />
                 </div>
               </div>
 
@@ -654,15 +692,20 @@ export default function InventoryPage() {
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setReturnQty(q => Math.max(1, q-1))}
                     className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"><Minus className="w-4 h-4"/></button>
-                  <input type="number" min="1" value={returnQty}
-                    onChange={e => setReturnQty(Math.max(1, parseInt(e.target.value,10)||1))}
+                  <input type="number" min="1" max={returningItem.borrow_quantity ?? undefined} value={returnQty}
+                    onChange={e => {
+                      const max = returningItem.borrow_quantity ?? Infinity;
+                      setReturnQty(Math.min(max, Math.max(1, parseInt(e.target.value,10)||1)));
+                    }}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-green-500" />
-                  <button type="button" onClick={() => setReturnQty(q => q + 1)}
-                    className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"><Plus className="w-4 h-4"/></button>
-                  <span className="text-sm text-gray-400">{returningItem.unit ?? ""}</span>
+                  <button type="button" onClick={() => {
+                    const max = returningItem.borrow_quantity ?? Infinity;
+                    setReturnQty(q => Math.min(max, q + 1));
+                  }} className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"><Plus className="w-4 h-4"/></button>
+                  <span className="text-sm text-gray-400">/ {returningItem.borrow_quantity ?? "?"} {returningItem.unit ?? ""}</span>
                 </div>
                 {returningItem.borrow_quantity && (
-                  <p className="text-xs text-gray-400 mt-1">Jumlah dipinjam: {returningItem.borrow_quantity} {returningItem.unit ?? ""}</p>
+                  <p className="text-xs text-orange-500 mt-1">Maksimal dikembalikan: {returningItem.borrow_quantity} {returningItem.unit ?? ""}</p>
                 )}
               </div>
               <div>
@@ -758,6 +801,66 @@ export default function InventoryPage() {
               <div className="flex gap-2 pt-2 border-t">
                 <button onClick={() => setViewing(null)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
                 {canEdit && <button onClick={() => { openEdit(viewing); setViewing(null); }} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center gap-1"><Edit2 className="w-4 h-4"/>Edit</button>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── History Preview Modal ── */}
+      {viewingHistory && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b">
+              <div>
+                <h3 className="font-semibold text-gray-900">Detail Riwayat Pinjam</h3>
+                <p className="text-xs text-gray-400 font-mono mt-0.5">{viewingHistory.borrow_code ?? `PJM-${viewingHistory.id}`}</p>
+              </div>
+              <button onClick={() => setViewingHistory(null)} className="p-2 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5 text-gray-400"/></button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Return photos */}
+              {(viewingHistory.return_photos?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Foto Pengembalian</p>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingHistory.return_photos!.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt="return" className="w-24 h-24 rounded-lg object-cover border border-gray-200 hover:opacity-80"/>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Borrower photos */}
+              {(viewingHistory.borrower_photos?.length ?? 0) > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase mb-2">Foto Peminjaman</p>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingHistory.borrower_photos!.map((url, i) => (
+                      <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                        <img src={url} alt="borrow" className="w-24 h-24 rounded-lg object-cover border border-gray-200 hover:opacity-80"/>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-xs text-gray-400">Item</p><p className="font-medium">{viewingHistory.item_name}</p></div>
+                <div><p className="text-xs text-gray-400">Peminjam</p><p className="font-medium">{viewingHistory.borrower_name}</p></div>
+                <div><p className="text-xs text-gray-400">Pemberi Pinjam</p><p>{viewingHistory.lender_name ?? "—"}</p></div>
+                <div><p className="text-xs text-gray-400">Kontak</p><p>{viewingHistory.borrower_contact ?? "—"}</p></div>
+                <div><p className="text-xs text-gray-400">Jml Dipinjam</p><p>{viewingHistory.borrow_quantity}</p></div>
+                <div><p className="text-xs text-gray-400">Jml Dikembalikan</p><p>{viewingHistory.returned_quantity ?? "—"}</p></div>
+                <div><p className="text-xs text-gray-400">Tgl Pinjam</p><p>{formatDate(viewingHistory.loan_date)}</p></div>
+                <div><p className="text-xs text-gray-400">Tgl Kembali</p><p className="text-green-700 font-medium">{formatDate(viewingHistory.return_date)}</p></div>
+                <div><p className="text-xs text-gray-400">Kondisi</p><p>{CONDITION_LABEL[viewingHistory.condition_on_return ?? "good"] ?? "—"}</p></div>
+              </div>
+              {viewingHistory.notes && <div className="bg-gray-50 rounded-lg p-3"><p className="text-xs text-gray-400 mb-1">Catatan</p><p className="text-sm text-gray-600">{viewingHistory.notes}</p></div>}
+
+              <div className="pt-2 border-t">
+                <button onClick={() => setViewingHistory(null)} className="w-full px-4 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm hover:bg-gray-50">Tutup</button>
               </div>
             </div>
           </div>
