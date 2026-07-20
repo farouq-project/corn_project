@@ -108,7 +108,7 @@ export default function TrialDetailPage() {
     return <div className="flex items-center justify-center h-64"><Loader2 className="w-8 h-8 animate-spin text-green-500" /></div>;
   }
 
-  if (!trial) return <div className="p-8 text-gray-400">Trial not found</div>;
+  if (!trial) return <div className="p-8 text-gray-400">Research Plan not found</div>;
 
   const envList = (environments as unknown as { data: Environment[] })?.data ?? [];
 
@@ -118,7 +118,7 @@ export default function TrialDetailPage() {
       <div>
         <Link href="/trials" className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 mb-3 transition">
           <ArrowLeft className="w-4 h-4" />
-          Kembali ke Trials
+          Kembali ke Research Plan
         </Link>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -261,7 +261,7 @@ export default function TrialDetailPage() {
                 <div className="text-center py-16 text-gray-400">
                   <Grid3x3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
                   <p className="text-sm">Belum ada layout plot.</p>
-                  <p className="text-xs mt-1">Assign genotipe ke trial, lalu klik Generate RCBD.</p>
+                  <p className="text-xs mt-1">Assign genotipe ke Research Plan, lalu klik Generate RCBD.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">

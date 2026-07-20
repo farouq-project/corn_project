@@ -20,8 +20,8 @@ import api from "@/lib/axios";
 const toOptionalNumber = (v: unknown) => (v === "" || v == null ? undefined : Number(v));
 
 const schema = z.object({
-  trial_code: z.string().min(1, "Kode trial wajib diisi").max(30),
-  trial_name: z.string().min(1, "Nama trial wajib diisi"),
+  trial_code: z.string().min(1, "Kode Research Plan wajib diisi").max(30),
+  trial_name: z.string().min(1, "Nama Research Plan wajib diisi"),
   season_id: z.preprocess(Number, z.number().min(1, "Pilih musim")),
   location_id: z.preprocess(Number, z.number().min(1, "Pilih lokasi")),
   objective: z.string().optional(),
@@ -78,15 +78,15 @@ export default function TrialsPage() {
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: number[]) => Promise.all(ids.map((id) => trialService.delete(id))),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["trials"] }); toast.success("Trial terpilih berhasil dihapus"); },
-    onError: () => toast.error("Sebagian atau semua trial gagal dihapus"),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["trials"] }); toast.success("Research Plan terpilih berhasil dihapus"); },
+    onError: () => toast.error("Sebagian atau semua Research Plan gagal dihapus"),
   });
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) => trialService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trials"] });
-      toast.success("Trial berhasil dibuat");
+      toast.success("Research Plan berhasil dibuat");
       closeModal();
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
@@ -96,7 +96,7 @@ export default function TrialsPage() {
     mutationFn: ({ id, data }: { id: number; data: Partial<Trial> }) => trialService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trials"] });
-      toast.success("Trial berhasil diperbarui");
+      toast.success("Research Plan berhasil diperbarui");
       closeModal();
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
@@ -145,11 +145,11 @@ export default function TrialsPage() {
 
   const columns: ColumnDef<Trial, unknown>[] = [
     {
-      header: "Kode Trial",
+      header: "Kode Research Plan",
       accessorKey: "trial_code",
       cell: ({ getValue }) => <span className="font-mono font-semibold text-green-700">{getValue() as string}</span>,
     },
-    { header: "Nama Trial", accessorKey: "trial_name" },
+    { header: "Nama Research Plan", accessorKey: "trial_name" },
     {
       header: "Musim",
       accessorKey: "season.season_name",
@@ -200,7 +200,7 @@ export default function TrialsPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <PageHeader
-        title="Manajemen Trial"
+        title="Research Plan"
         description="Kelola penelitian dan percobaan jagung"
         actions={
           <div className="flex items-center gap-2">
@@ -217,7 +217,7 @@ export default function TrialsPage() {
             </div>
             <button onClick={openCreate} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition">
               <Plus className="w-4 h-4" />
-              Buat Trial
+              Buat Research Plan
             </button>
           </div>
         }
@@ -240,7 +240,7 @@ export default function TrialsPage() {
           ) : trials.length === 0 ? (
             <div className="col-span-3 text-center py-16 text-gray-400">
               <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>Belum ada trial. Klik Buat Trial untuk memulai.</p>
+              <p>Belum ada Research Plan. Klik Buat Research Plan untuk memulai.</p>
             </div>
           ) : (
             trials.map((trial) => (
@@ -287,8 +287,8 @@ export default function TrialsPage() {
             data={trials}
             columns={columns}
             isLoading={isLoading}
-            searchPlaceholder="Cari kode atau nama trial..."
-            emptyMessage="Belum ada trial"
+            searchPlaceholder="Cari kode atau nama Research Plan..."
+            emptyMessage="Belum ada Research Plan"
             getRowId={(row) => String(row.id)}
             onBulkDelete={(rows) => bulkDeleteMutation.mutate(rows.map((r) => r.id))}
             isBulkDeleting={bulkDeleteMutation.isPending}
@@ -301,13 +301,13 @@ export default function TrialsPage() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold">{editingTrial ? "Edit Trial" : "Buat Trial Baru"}</h3>
+              <h3 className="text-lg font-semibold">{editingTrial ? "Edit Research Plan" : "Buat Research Plan Baru"}</h3>
               <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Kode Trial *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Kode Research Plan *</label>
                   <input {...register("trial_code")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. T-MH2026-001" />
                   {errors.trial_code && <p className="text-red-500 text-xs mt-1">{errors.trial_code.message}</p>}
                 </div>
@@ -320,7 +320,7 @@ export default function TrialsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Trial *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nama Research Plan *</label>
                 <input {...register("trial_name")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="Judul lengkap penelitian" />
                 {errors.trial_name && <p className="text-red-500 text-xs mt-1">{errors.trial_name.message}</p>}
               </div>
@@ -397,7 +397,7 @@ export default function TrialsPage() {
               <div className="flex gap-3 pt-2 border-t border-gray-100">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50 transition">Batal</button>
                 <button type="submit" disabled={isSubmitting || createMutation.isPending || updateMutation.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium transition">
-                  {isSubmitting ? "Menyimpan..." : editingTrial ? "Simpan Perubahan" : "Buat Trial"}
+                  {isSubmitting ? "Menyimpan..." : editingTrial ? "Simpan Perubahan" : "Buat Research Plan"}
                 </button>
               </div>
             </form>

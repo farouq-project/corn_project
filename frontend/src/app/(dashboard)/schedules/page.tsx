@@ -392,7 +392,7 @@ export default function SchedulesPage() {
                 )}
                 {detailSchedule.trial && (
                   <div>
-                    <p className="text-xs text-gray-400">Trial</p>
+                    <p className="text-xs text-gray-400">Research Plan</p>
                     <p className="font-medium font-mono text-green-700">{detailSchedule.trial.trial_code}</p>
                   </div>
                 )}
@@ -460,9 +460,9 @@ export default function SchedulesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Trial</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Research Plan</label>
                   <select {...register("trial_id")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                    <option value="">-- Pilih Trial --</option>
+                    <option value="">-- Pilih Research Plan --</option>
                     {trials?.map((t) => <option key={t.id} value={t.id}>{t.trial_code}</option>)}
                   </select>
                 </div>
