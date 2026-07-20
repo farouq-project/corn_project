@@ -93,6 +93,7 @@ const trialSchema = z.object({
   planting_date: z.string().optional(),
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
+  num_plots: z.preprocess((v) => (v === "" || v == null ? undefined : Number(v)), z.number().int().min(1).max(10000).optional()),
   status: z.enum(["planned", "active", "harvested", "completed", "cancelled"]).default("planned"),
 });
 
@@ -314,6 +315,7 @@ export default function MasterDataPage() {
       environment_condition_id: (t as Trial & { environment_condition_id?: number }).environment_condition_id ?? null,
       layout_design: t.layout_design as z.infer<typeof trialSchema>["layout_design"],
       replications: t.replications,
+      num_plots: t.num_plots ?? undefined,
       status: t.status as z.infer<typeof trialSchema>["status"],
       planting_date: (t as Trial & { planting_date?: string }).planting_date ?? "",
     });
@@ -797,6 +799,11 @@ export default function MasterDataPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Desain</label><select {...tForm.register("layout_design")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">{[["RCBD","RCBD"],["CRD","CRD"],["split_plot","Split Plot"],["factorial","Faktorial"],["augmented","Augmented"],["alpha_lattice","Alpha Lattice"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></div>
                     <div><label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Ulangan</label><input type="number" min="1" max="20" {...tForm.register("replications")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" /></div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Plot</label>
+                    <input type="number" min="1" max="10000" {...tForm.register("num_plots")} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. 60" />
+                    <p className="text-xs text-gray-400 mt-1">Isi untuk mode entri plot langsung di Data Pengamatan. Kosongkan jika menggunakan matriks genotipe.</p>
                   </div>
                   <div className="flex gap-3 pt-2 border-t"><button type="button" onClick={closeModal} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm hover:bg-gray-50">Batal</button><button type="submit" disabled={tCreate.isPending||tUpdate.isPending} className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white rounded-lg text-sm font-medium">{editingTrial ? "Simpan Perubahan" : "Buat Research Plan"}</button></div>
                 </form>
