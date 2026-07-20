@@ -92,9 +92,10 @@ const navigation: { label: string; items: NavItem[] }[] = [
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  collapsed?: boolean;
 }
 
-export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
+export function Sidebar({ isOpen = false, onClose, collapsed = false }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuthStore();
   const userRole = (user?.roles?.[0] as string) ?? "";
@@ -128,7 +129,8 @@ export function Sidebar({ isOpen = false, onClose }: SidebarProps) {
         className={cn(
           "w-64 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-full shadow-sm",
           "fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 md:z-auto",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "translate-x-0" : "-translate-x-full",
+          collapsed && "md:hidden"
         )}
       >
         {/* Logo */}

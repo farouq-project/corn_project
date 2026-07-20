@@ -24,7 +24,9 @@ export default function DataPengamatanPage() {
   const [showImport, setShowImport] = useState(false);
   const [selectedBatchId, setSelectedBatchId] = useState<number|null>(null);
   const [previewFilter, setPreviewFilter] = useState("");
-  const [trialFilter, setTrialFilter] = useState<string>("");
+  const [trialFilter, setTrialFilter] = useState<string>(
+    () => (typeof window !== "undefined" ? (localStorage.getItem("obs-trial-filter") ?? "") : "")
+  );
   const [environmentFilter, setEnvironmentFilter] = useState<string>("");
   const importFileRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
@@ -429,12 +431,27 @@ export default function DataPengamatanPage() {
         <label className="text-sm text-gray-600 flex-shrink-0">Filter:</label>
         <select
           value={trialFilter}
-          onChange={(e) => { setTrialFilter(e.target.value); setEnvironmentFilter(""); }}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTrialFilter(v);
+            setEnvironmentFilter("");
+            localStorage.setItem("obs-trial-filter", v);
+          }}
           className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 w-full sm:w-auto"
         >
           <option value="">Semua Research Plan</option>
           {trials.map((t) => <option key={t.id} value={t.id}>{t.trial_name}</option>)}
         </select>
+
+        {trialFilter && (
+          <button
+            onClick={() => { setTrialFilter(""); setEnvironmentFilter(""); localStorage.removeItem("obs-trial-filter"); }}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition flex-shrink-0"
+            title="Reset filter Research Plan"
+          >
+            <X className="w-3 h-3" /> Reset
+          </button>
+        )}
 
         <select
           value={environmentFilter}

@@ -44,6 +44,8 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Characteristic, GridRow } from "@/types";
@@ -173,8 +175,26 @@ export function ObservationGrid({
   onViewRow,
   onDeleteRow,
 }: ObservationGridProps) {
+  // ── Fullscreen ─────────────────────────────────────────────────────────────
+  const gridRef        = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      gridRef.current?.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+  };
+
   // ── Table state ────────────────────────────────────────────────────────────
-  const [sorting,          setSorting]          = useState<SortingState>([]);
+  const [sorting,          setSorting]          = useState<SortingState>([{ id: "replication", desc: false }]);
   const [columnFilters,    setColumnFilters]    = useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
     () => loadFromLS<VisibilityState>(LS_VISIBILITY_KEY, {})
@@ -255,21 +275,28 @@ export function ObservationGrid({
     );
 
     const charCols = numSamples > 1
-      ? characteristics.flatMap((c) =>
-          Array.from({ length: numSamples }, (_, i) => {
-            const colId = `${c.code}__s${i + 1}`;
-            return columnHelper.accessor((row) => row[colId] as number | null, {
-              id:                 colId,
-              size:               72,
-              enableColumnFilter: false,
-              header: () => (
-                <div className="text-center leading-tight" title={`${c.name} S${i + 1}${c.unit ? ` (${c.unit})` : ""}`}>
-                  <div>{c.code} S{i + 1}</div>
-                  {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
-                </div>
-              ),
-              cell: () => null,
-            });
+      ? characteristics.map((c) =>
+          columnHelper.group({
+            id:                 c.code,
+            enableSorting:      false,
+            enableColumnFilter: false,
+            header: () => (
+              <div className="text-center leading-tight" title={`${c.name}${c.unit ? ` (${c.unit})` : ""}`}>
+                <div>{c.code}</div>
+                {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
+              </div>
+            ),
+            columns: Array.from({ length: numSamples }, (_, i) => {
+              const colId = `${c.code}__s${i + 1}`;
+              return columnHelper.accessor((row) => row[colId] as number | null, {
+                id:                 colId,
+                size:               64,
+                enableColumnFilter: false,
+                enableSorting:      false,
+                header:             () => <div className="text-center font-normal normal-case text-[11px] text-gray-500">S{i + 1}</div>,
+                cell:               () => null,
+              });
+            }),
           })
         )
       : characteristics.map((c) =>
@@ -526,7 +553,13 @@ export function ObservationGrid({
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-2 outline-none" tabIndex={0} onKeyDown={handleKeyDown} onPaste={handlePaste}>
+    <div
+      ref={gridRef}
+      className={cn("space-y-2 outline-none", isFullscreen && "bg-white p-4 overflow-auto")}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+    >
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         {canEdit ? (
@@ -537,7 +570,17 @@ export function ObservationGrid({
           <p className="text-[11px] text-gray-400">Mode baca saja</p>
         )}
 
-        <div className="relative ml-auto">
+        <div className="flex items-center gap-2 ml-auto">
+          {/* Fullscreen toggle */}
+          <button
+            onClick={toggleFullscreen}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+            title={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+          </button>
+
+        <div className="relative">
           <button
             onClick={() => setShowColumnMenu((v) => !v)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition"
@@ -595,13 +638,14 @@ export function ObservationGrid({
             </div>
           )}
         </div>
+        </div>{/* end ml-auto flex */}
       </div>
 
       {/* Table */}
       <div
         ref={containerRef}
         className="overflow-auto rounded-lg border border-gray-200"
-        style={{ maxHeight: "72vh", isolation: "isolate" }}
+        style={{ maxHeight: isFullscreen ? "calc(100dvh - 120px)" : "72vh", isolation: "isolate" }}
       >
         <table
           className="min-w-full border-separate border-spacing-0 text-sm"
@@ -613,10 +657,16 @@ export function ObservationGrid({
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
+                    colSpan={header.colSpan}
                     style={getPinningStyles(header.column, true)}
-                    className="px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 bg-gray-50"
+                    className={cn(
+                      "px-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50",
+                      header.isPlaceholder
+                        ? "py-0"
+                        : "py-2 border-b border-gray-200"
+                    )}
                   >
-                    {header.isPlaceholder ? null : (
+                    {!header.isPlaceholder && (
                       <div className="space-y-1">
                         <button
                           onClick={header.column.getToggleSortingHandler()}
