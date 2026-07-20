@@ -28,6 +28,7 @@ const schema = z.object({
   layout_design: z.enum(["RCBD", "CRD", "split_plot", "factorial", "augmented", "alpha_lattice"]).default("RCBD"),
   replications: z.preprocess(Number, z.number().min(1).max(20).default(3)),
   num_plots: z.preprocess(toOptionalNumber, z.number().int().min(1).max(10000).optional()),
+  num_samples: z.preprocess(toOptionalNumber, z.number().int().min(1).max(100).optional()),
   plot_size_m2: z.preprocess(toOptionalNumber, z.number().optional()),
   planting_date: z.string().optional(),
   harvest_date: z.string().optional(),
@@ -117,7 +118,7 @@ export default function TrialsPage() {
       trial_code: t.trial_code, trial_name: t.trial_name,
       season_id: t.season_id, location_id: t.location_id,
       objective: t.objective ?? "", layout_design: t.layout_design as FormData["layout_design"],
-      replications: t.replications, num_plots: t.num_plots ?? undefined, plot_size_m2: t.plot_size_m2 ?? undefined,
+      replications: t.replications, num_plots: t.num_plots ?? undefined, num_samples: t.num_samples ?? undefined, plot_size_m2: t.plot_size_m2 ?? undefined,
       planting_date: t.planting_date ?? "", harvest_date: t.harvest_date ?? "",
       status: t.status, notes: t.notes ?? "",
     });
@@ -384,6 +385,13 @@ export default function TrialsPage() {
                 <input {...register("num_plots")} type="number" min="1" max="10000" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. 60" />
                 <p className="text-xs text-gray-400 mt-1">Isi untuk mode entri plot langsung (1–N baris di Data Pengamatan). Kosongkan jika menggunakan matriks genotipe × lingkungan.</p>
                 {errors.num_plots && <p className="text-red-500 text-xs mt-1">{errors.num_plots.message}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jumlah Sample</label>
+                <input {...register("num_samples")} type="number" min="1" max="100" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" placeholder="mis. 3" />
+                <p className="text-xs text-gray-400 mt-1">Isi jika setiap karakteristik diukur N kali per plot (S1, S2, …SN). Kosongkan jika hanya 1 pengukuran.</p>
+                {errors.num_samples && <p className="text-red-500 text-xs mt-1">{errors.num_samples.message}</p>}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

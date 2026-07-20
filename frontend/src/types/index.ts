@@ -173,6 +173,7 @@ export interface Trial {
   layout_design: string;
   replications: number;
   num_plots?: number | null;
+  num_samples?: number | null;
   plot_size_m2?: number;
   planting_date?: string;
   harvest_date?: string;

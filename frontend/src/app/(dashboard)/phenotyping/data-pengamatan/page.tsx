@@ -184,6 +184,7 @@ export default function DataPengamatanPage() {
     staleTime: 30_000,
   });
   const gridRows: GridRow[] = gridData?.rows ?? [];
+  const numSamples: number = (gridData as { trial?: { num_samples?: number | null } } | undefined)?.trial?.num_samples ?? 1;
 
   // Track record IDs auto-created during this session (key = "genoId:envId:rep")
   const runtimeRecordIds = useRef<Map<string, number>>(new Map());
@@ -195,21 +196,22 @@ export default function DataPengamatanPage() {
   }
 
   const handleCellChange = useCallback(
-    async (row: GridRow, characteristic: Characteristic, value: number | null) => {
+    async (row: GridRow, characteristic: Characteristic, value: number | null, sampleNumber = 1) => {
       const isSimplePlot = row.genotype_id === null;
       const rowKey = isSimplePlot
-        ? `plot:${row.plot_no}`
+        ? `plot:${row.plot_no}:${row.replication}`
         : `${row.genotype_id}:${row.environment_id}:${row.replication}`;
       let recordId = row.record_id ?? runtimeRecordIds.current.get(rowKey);
 
       const rowMatches = (r: GridRow) =>
         isSimplePlot
-          ? r.plot_no === row.plot_no
+          ? r.plot_no === row.plot_no && r.replication === row.replication
           : r.genotype_id === row.genotype_id &&
             r.environment_id === row.environment_id &&
             r.replication === row.replication;
 
       // Optimistic: update value in cache immediately
+      const colId = sampleNumber > 1 ? `${characteristic.code}__s${sampleNumber}` : characteristic.code;
       queryClient.setQueryData(
         gridQueryKey,
         (old: { trial: unknown; rows: GridRow[] } | undefined) => {
@@ -217,7 +219,7 @@ export default function DataPengamatanPage() {
           return {
             ...old,
             rows: old.rows.map((r) =>
-              rowMatches(r) ? { ...r, values: { ...r.values, [characteristic.code]: value } } : r
+              rowMatches(r) ? { ...r, values: { ...r.values, [colId]: value } } : r
             ),
           };
         }
@@ -229,7 +231,7 @@ export default function DataPengamatanPage() {
           trial_id:    trialFilter ? Number(trialFilter) : undefined,
           plot_no:     row.plot_no,
           replication: row.replication,
-          values:      [{ characteristic_id: characteristic.id, value }],
+          values:      [{ characteristic_id: characteristic.id, value, sample_number: sampleNumber }],
         };
         if (!isSimplePlot) {
           payload.genotype_id    = row.genotype_id;
@@ -258,7 +260,7 @@ export default function DataPengamatanPage() {
       }
 
       await phenotypingService.updateRecord(recordId, {
-        values: [{ characteristic_id: characteristic.id, value }],
+        values: [{ characteristic_id: characteristic.id, value, sample_number: sampleNumber }],
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -460,6 +462,7 @@ export default function DataPengamatanPage() {
           <ObservationGrid
             rows={gridRows}
             characteristics={characteristics}
+            numSamples={numSamples}
             isLoading={gridLoading}
             canEdit={canEdit}
             onCellChange={handleCellChange}

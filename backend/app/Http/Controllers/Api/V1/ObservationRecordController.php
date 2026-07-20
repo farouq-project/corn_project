@@ -32,11 +32,14 @@ class ObservationRecordController extends Controller
             'environments',
         ])->findOrFail($request->trial_id);
 
+        $numSamples = $trial->num_samples ?? 1;
+
         $trialMeta = [
-            'id'          => $trial->id,
-            'trial_name'  => $trial->trial_name,
+            'id'           => $trial->id,
+            'trial_name'   => $trial->trial_name,
             'replications' => $trial->replications,
-            'num_plots'   => $trial->num_plots,
+            'num_plots'    => $trial->num_plots,
+            'num_samples'  => $trial->num_samples,
         ];
 
         // ── Simple-plot mode: num_plots set, no genotypes assigned ──────────────
@@ -46,23 +49,27 @@ class ObservationRecordController extends Controller
                 ->whereNull('genotype_id')
                 ->get();
 
-            $plotIndex = $records->keyBy('plot_no');
+            $plotIndex = $records->keyBy(fn ($r) => "{$r->plot_no}:{$r->replication}");
 
-            $rows = [];
+            $rows      = [];
+            $entryNum  = 0;
             for ($i = 1; $i <= $trial->num_plots; $i++) {
-                $record = $plotIndex->get((string) $i);
-                $values = $this->extractValues($record);
-                $rows[] = [
-                    'entry_number'   => $i,
-                    'plot_no'        => (string) $i,
-                    'genotype_id'    => null,
-                    'genotype'       => null,
-                    'environment_id' => null,
-                    'environment'    => null,
-                    'replication'    => 1,
-                    'record_id'      => $record?->id,
-                    'values'         => empty($values) ? (object) [] : $values,
-                ];
+                for ($rep = 1; $rep <= $trial->replications; $rep++) {
+                    $entryNum++;
+                    $record = $plotIndex->get("{$i}:{$rep}");
+                    $values = $this->extractValues($record, $numSamples);
+                    $rows[] = [
+                        'entry_number'   => $entryNum,
+                        'plot_no'        => (string) $i,
+                        'genotype_id'    => null,
+                        'genotype'       => null,
+                        'environment_id' => null,
+                        'environment'    => null,
+                        'replication'    => $rep,
+                        'record_id'      => $record?->id,
+                        'values'         => empty($values) ? (object) [] : $values,
+                    ];
+                }
             }
 
             return response()->json(['trial' => array_merge($trialMeta, ['mode' => 'simple']), 'rows' => $rows]);
@@ -94,7 +101,7 @@ class ObservationRecordController extends Controller
                 for ($rep = 1; $rep <= $trial->replications; $rep++) {
                     $key    = "{$genotype->id}:{$env->id}:{$rep}";
                     $record = $index->get($key);
-                    $values = $this->extractValues($record);
+                    $values = $this->extractValues($record, $numSamples);
                     $rows[] = [
                         'entry_number'   => $entryNumber,
                         'plot_no'        => $record?->plot_no ?? (string) $entryNumber,
@@ -121,16 +128,30 @@ class ObservationRecordController extends Controller
         return response()->json(['trial' => $trialMeta, 'rows' => $rows]);
     }
 
-    private function extractValues(?ObservationRecord $record): array
+    private function extractValues(?ObservationRecord $record, int $numSamples = 1): array
     {
         if (!$record) return [];
-        return $record->values
-            ->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id)
-            ->mapWithKeys(fn ($group, $code) => [
-                $code => $group->count() > 1
-                    ? round($group->whereNotNull('value')->avg('value'), 4)
-                    : ($group->first()?->value !== null ? (float) $group->first()->value : null),
-            ])->toArray();
+
+        if ($numSamples <= 1) {
+            return $record->values
+                ->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id)
+                ->mapWithKeys(fn ($group, $code) => [
+                    $code => $group->count() > 1
+                        ? round($group->whereNotNull('value')->avg('value'), 4)
+                        : ($group->first()?->value !== null ? (float) $group->first()->value : null),
+                ])->toArray();
+        }
+
+        // Per-sample mode: return keys like "TT__s1", "TT__s2", etc.
+        $result = [];
+        $byChar = $record->values->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id);
+        foreach ($byChar as $code => $group) {
+            for ($s = 1; $s <= $numSamples; $s++) {
+                $sv = $group->firstWhere('sample_number', $s);
+                $result["{$code}__s{$s}"] = $sv?->value !== null ? (float) $sv->value : null;
+            }
+        }
+        return $result;
     }
 
     public function index(Request $request): JsonResponse
@@ -183,6 +204,7 @@ class ObservationRecordController extends Controller
                 ->where('trial_id', $data['trial_id'])
                 ->whereNull('genotype_id')
                 ->where('plot_no', $data['plot_no'])
+                ->where('replication', $data['replication'])
                 ->first();
         } else {
             $existing = ObservationRecord::withTrashed()

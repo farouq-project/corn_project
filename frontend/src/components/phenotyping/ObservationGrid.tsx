@@ -92,9 +92,10 @@ const ROW_HEIGHT = 34;
 interface ObservationGridProps {
   rows:            GridRow[];
   characteristics: Characteristic[];
+  numSamples?:     number;
   isLoading?:      boolean;
   canEdit?:        boolean;
-  onCellChange:    (row: GridRow, characteristic: Characteristic, value: number | null) => Promise<void>;
+  onCellChange:    (row: GridRow, characteristic: Characteristic, value: number | null, sampleNumber?: number) => Promise<void>;
   onViewRow?:      (row: GridRow) => void;
   onDeleteRow?:    (row: GridRow) => void;
 }
@@ -118,9 +119,18 @@ interface ActiveCell {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function cellKey(row: GridRow, charCode: string) {
-  if (row.genotype_id === null) return `plot:${row.plot_no}:${charCode}`;
-  return `${row.genotype_id}:${row.environment_id}:${row.replication}:${charCode}`;
+/** Split a column id like "TT__s2" into { charCode: "TT", sampleNumber: 2 }. */
+function parseColId(colId: string): { charCode: string; sampleNumber: number } {
+  const sep = colId.lastIndexOf("__s");
+  if (sep === -1) return { charCode: colId, sampleNumber: 1 };
+  return { charCode: colId.slice(0, sep), sampleNumber: parseInt(colId.slice(sep + 3), 10) };
+}
+
+function cellKey(row: GridRow, colId: string) {
+  const { charCode, sampleNumber } = parseColId(colId);
+  const suffix = sampleNumber > 1 ? `:s${sampleNumber}` : "";
+  if (row.genotype_id === null) return `plot:${row.plot_no}:${row.replication}:${charCode}${suffix}`;
+  return `${row.genotype_id}:${row.environment_id}:${row.replication}:${charCode}${suffix}`;
 }
 
 function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
@@ -156,6 +166,7 @@ const columnHelper = createColumnHelper<RowData>();
 export function ObservationGrid({
   rows,
   characteristics,
+  numSamples = 1,
   isLoading,
   canEdit = true,
   onCellChange,
@@ -195,15 +206,33 @@ export function ObservationGrid({
         genotype_name:    r.genotype?.genotype_name ?? "",
         environment_code: r.environment ? (r.environment.name ?? r.environment.environment_code) : "",
         replication:      r.replication,
-        ...Object.fromEntries(characteristics.map((c) => [c.code, r.values?.[c.code] ?? null])),
+        ...Object.fromEntries(
+          numSamples > 1
+            ? characteristics.flatMap((c) =>
+                Array.from({ length: numSamples }, (_, i) => {
+                  const colId = `${c.code}__s${i + 1}`;
+                  return [colId, r.values?.[colId] ?? null];
+                })
+              )
+            : characteristics.map((c) => [c.code, r.values?.[c.code] ?? null])
+        ),
       })),
-    [rows, characteristics]
+    [rows, characteristics, numSamples]
   );
 
-  const charLabelMap = useMemo(
-    () => Object.fromEntries(characteristics.map((c) => [c.code, c.name])),
-    [characteristics]
-  );
+  const charLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    characteristics.forEach((c) => {
+      if (numSamples > 1) {
+        for (let s = 1; s <= numSamples; s++) {
+          map[`${c.code}__s${s}`] = `${c.name} S${s}`;
+        }
+      } else {
+        map[c.code] = c.name;
+      }
+    });
+    return map;
+  }, [characteristics, numSamples]);
 
   // ── Columns ────────────────────────────────────────────────────────────────
   const columns = useMemo<ColumnDef<RowData, unknown>[]>(() => {
@@ -225,20 +254,38 @@ export function ObservationGrid({
       })
     );
 
-    const charCols = characteristics.map((c) =>
-      columnHelper.accessor((row) => row[c.code] as number | null, {
-        id:                 c.code,
-        size:               72,
-        enableColumnFilter: false,
-        header: () => (
-          <div className="text-center leading-tight" title={`${c.name}${c.unit ? ` (${c.unit})` : ""}`}>
-            <div>{c.code}</div>
-            {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
-          </div>
-        ),
-        cell: () => null,
-      })
-    );
+    const charCols = numSamples > 1
+      ? characteristics.flatMap((c) =>
+          Array.from({ length: numSamples }, (_, i) => {
+            const colId = `${c.code}__s${i + 1}`;
+            return columnHelper.accessor((row) => row[colId] as number | null, {
+              id:                 colId,
+              size:               72,
+              enableColumnFilter: false,
+              header: () => (
+                <div className="text-center leading-tight" title={`${c.name} S${i + 1}${c.unit ? ` (${c.unit})` : ""}`}>
+                  <div>{c.code} S{i + 1}</div>
+                  {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
+                </div>
+              ),
+              cell: () => null,
+            });
+          })
+        )
+      : characteristics.map((c) =>
+          columnHelper.accessor((row) => row[c.code] as number | null, {
+            id:                 c.code,
+            size:               72,
+            enableColumnFilter: false,
+            header: () => (
+              <div className="text-center leading-tight" title={`${c.name}${c.unit ? ` (${c.unit})` : ""}`}>
+                <div>{c.code}</div>
+                {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
+              </div>
+            ),
+            cell: () => null,
+          })
+        );
 
     const aksiCol: ColumnDef<RowData, unknown>[] =
       onViewRow || onDeleteRow
@@ -279,7 +326,7 @@ export function ObservationGrid({
 
     return [...staticCols, ...charCols, ...aksiCol] as ColumnDef<RowData, unknown>[];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characteristics, canEdit, onViewRow, onDeleteRow]);
+  }, [characteristics, numSamples, canEdit, onViewRow, onDeleteRow]);
 
   // ── Table ─────────────────────────────────────────────────────────────────
   const table = useReactTable({
@@ -322,11 +369,12 @@ export function ObservationGrid({
 
   // ── Save ───────────────────────────────────────────────────────────────────
   const commitSave = useCallback(
-    async (gridRow: GridRow, char: Characteristic, value: number | null) => {
-      const key = cellKey(gridRow, char.code);
+    async (gridRow: GridRow, char: Characteristic, value: number | null, sampleNumber = 1) => {
+      const colId = sampleNumber > 1 ? `${char.code}__s${sampleNumber}` : char.code;
+      const key = cellKey(gridRow, colId);
       setCellStatus((s) => ({ ...s, [key]: "saving" }));
       try {
-        await onCellChange(gridRow, char, value);
+        await onCellChange(gridRow, char, value, sampleNumber);
         setCellStatus((s) => ({ ...s, [key]: "saved" }));
         setTimeout(
           () => setCellStatus((s) => { const n = { ...s }; delete n[key]; return n; }),
@@ -359,14 +407,15 @@ export function ObservationGrid({
     const row = tableRows[editingCell.rowIdx];
     const col = visibleCharCols[editingCell.charColIdx];
     if (!row || !col) { setEditingCell(null); return; }
-    const char = characteristics.find((c) => c.code === col.id);
+    const { charCode, sampleNumber } = parseColId(col.id);
+    const char = characteristics.find((c) => c.code === charCode);
     if (!char) { setEditingCell(null); return; }
     const trimmed = editValue.trim();
     const num = trimmed === "" ? null : Number(trimmed.replace(",", "."));
     const rounded = num !== null && !isNaN(num) ? Number(num.toFixed(char.decimal_places)) : null;
     setEditingCell(null);
     setEditValue("");
-    void commitSave(row.original.row, char, rounded);
+    void commitSave(row.original.row, char, rounded, sampleNumber);
   }, [editingCell, tableRows, visibleCharCols, characteristics, editValue, commitSave]);
 
   // ── Navigation ─────────────────────────────────────────────────────────────
@@ -416,8 +465,9 @@ export function ObservationGrid({
         const row = tableRows[activeCell.rowIdx];
         const col = visibleCharCols[activeCell.charColIdx];
         if (!row || !col) return;
-        const char = characteristics.find((c) => c.code === col.id);
-        if (char) void commitSave(row.original.row, char, null);
+        const { charCode, sampleNumber } = parseColId(col.id);
+        const char = characteristics.find((c) => c.code === charCode);
+        if (char) void commitSave(row.original.row, char, null, sampleNumber);
         return;
       }
       if (canEdit && /^[\d.\-]$/.test(e.key)) { e.preventDefault(); startEdit(activeCell, e.key); }
@@ -443,13 +493,14 @@ export function ObservationGrid({
           const charIdx = activeCell.charColIdx + cOffset;
           if (charIdx >= visibleCharCols.length) return;
           const col  = visibleCharCols[charIdx];
-          const char = characteristics.find((c) => c.code === col.id);
+          const { charCode, sampleNumber } = parseColId(col.id);
+          const char = characteristics.find((c) => c.code === charCode);
           if (!char) return;
           const cleaned = rawVal.trim().replace(",", ".");
           const num = cleaned === "" ? null : Number(cleaned);
           if (num !== null && isNaN(num)) return;
           const rounded = num !== null ? Number(num.toFixed(char.decimal_places)) : null;
-          void commitSave(gridRow, char, rounded);
+          void commitSave(gridRow, char, rounded, sampleNumber);
         });
       });
     },
@@ -652,7 +703,8 @@ export function ObservationGrid({
 
                         // ── Characteristic cell ──────────────────────────────
                         if (isCharCol && charColIdx >= 0) {
-                          const char  = characteristics.find((c) => c.code === cell.column.id);
+                          const { charCode } = parseColId(cell.column.id);
+                          const char  = characteristics.find((c) => c.code === charCode);
                           const value = gridRow.values?.[cell.column.id] ?? null;
 
                           return (

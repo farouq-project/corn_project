@@ -23,10 +23,10 @@ export const phenotypingService = {
   getRecords: (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<ObservationRecord>>("/v1/phenotyping/records", { params }),
 
-  createRecord: (data: Partial<Omit<ObservationRecord, "values">> & { values?: { characteristic_id: number; value: number | null }[] }) =>
+  createRecord: (data: Partial<Omit<ObservationRecord, "values">> & { values?: { characteristic_id: number; value: number | null; sample_number?: number }[] }) =>
     api.post<ObservationRecord>("/v1/phenotyping/records", data),
 
-  updateRecord: (id: number, data: Partial<Omit<ObservationRecord, "values">> & { values?: { characteristic_id: number; value: number | null }[] }) =>
+  updateRecord: (id: number, data: Partial<Omit<ObservationRecord, "values">> & { values?: { characteristic_id: number; value: number | null; sample_number?: number }[] }) =>
     api.put<ObservationRecord>(`/v1/phenotyping/records/${id}`, data),
 
   deleteRecord: (id: number) =>
