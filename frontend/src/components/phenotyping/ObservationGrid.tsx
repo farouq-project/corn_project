@@ -146,7 +146,8 @@ function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSP
     maxWidth: `${column.getSize()}px`,
     zIndex: isHeader ? 30 : 20,
     backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",
-    boxShadow: "inset -1px 0 0 rgb(209,213,219), 3px 0 8px -3px rgba(0,0,0,0.10)",
+    // thin dark separator on the right edge of each pinned column
+    boxShadow: "inset -1px 0 0 rgba(55,65,81,0.45), 2px 0 5px -2px rgba(0,0,0,0.10)",
   };
 }
 
@@ -644,7 +645,7 @@ export function ObservationGrid({
       {/* Table */}
       <div
         ref={containerRef}
-        className="overflow-auto rounded-lg border border-gray-200"
+        className="overflow-auto rounded-lg border border-gray-800"
         style={{ maxHeight: isFullscreen ? "calc(100dvh - 120px)" : "72vh", isolation: "isolate" }}
       >
         <table
@@ -660,10 +661,10 @@ export function ObservationGrid({
                     colSpan={header.colSpan}
                     style={getPinningStyles(header.column, true)}
                     className={cn(
-                      "px-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide bg-gray-50",
+                      "px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50",
                       header.isPlaceholder
                         ? "py-0"
-                        : "py-2 border-b border-gray-200"
+                        : "py-2 border-r border-b border-gray-300"
                     )}
                   >
                     {!header.isPlaceholder && (
@@ -671,7 +672,7 @@ export function ObservationGrid({
                         <button
                           onClick={header.column.getToggleSortingHandler()}
                           className={cn(
-                            "flex items-center gap-1 w-full",
+                            "flex items-center justify-center gap-1 w-full",
                             header.column.getCanSort() && "cursor-pointer select-none"
                           )}
                         >
@@ -705,7 +706,7 @@ export function ObservationGrid({
               [...Array(8)].map((_, i) => (
                 <tr key={i} style={{ height: ROW_HEIGHT }}>
                   {table.getAllLeafColumns().map((col) => (
-                    <td key={col.id} className="px-2 py-1">
+                    <td key={col.id} className="px-2 py-1 border-r border-b border-gray-300">
                       <div className="h-4 bg-gray-100 rounded animate-pulse" />
                     </td>
                   ))}
@@ -762,7 +763,7 @@ export function ObservationGrid({
                               key={cell.id}
                               style={getPinningStyles(cell.column)}
                               className={cn(
-                                "px-0 py-0 relative border-b border-gray-50",
+                                "px-0 py-0 relative border-r border-b border-gray-800",
                                 !isPinned && !isSelected && !isEditing && "group-hover:bg-gray-50/60",
                               )}
                             >
@@ -822,7 +823,7 @@ export function ObservationGrid({
                               ...(isPinned ? {} : { backgroundColor: isEmpty ? "rgb(255,251,235,0.4)" : "rgb(255,255,255)" }),
                             }}
                             className={cn(
-                              "px-2 py-1 whitespace-nowrap border-b border-gray-50",
+                              "px-2 py-1 whitespace-nowrap border-r border-b border-gray-300",
                               isPinned ? "text-gray-600" : "text-gray-600 group-hover:bg-gray-50/60",
                             )}
                           >
