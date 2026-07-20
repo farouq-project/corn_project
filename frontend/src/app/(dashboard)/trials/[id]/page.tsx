@@ -157,6 +157,7 @@ export default function TrialDetailPage() {
           { label: "Lokasi Utama", value: trial.location?.field_name, icon: MapPin },
           { label: "Desain", value: trial.layout_design, icon: Grid3x3 },
           { label: "Ulangan", value: `${trial.replications}×`, icon: Settings2 },
+          ...(trial.num_plots ? [{ label: "Total Plot", value: `${trial.num_plots} plot`, icon: Users }] : []),
         ].map((item) => (
           <div key={item.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
             <p className="text-xs text-gray-400 mb-1">{item.label}</p>

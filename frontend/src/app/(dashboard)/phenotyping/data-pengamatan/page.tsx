@@ -196,8 +196,18 @@ export default function DataPengamatanPage() {
 
   const handleCellChange = useCallback(
     async (row: GridRow, characteristic: Characteristic, value: number | null) => {
-      const rowKey  = `${row.genotype_id}:${row.environment_id}:${row.replication}`;
+      const isSimplePlot = row.genotype_id === null;
+      const rowKey = isSimplePlot
+        ? `plot:${row.plot_no}`
+        : `${row.genotype_id}:${row.environment_id}:${row.replication}`;
       let recordId = row.record_id ?? runtimeRecordIds.current.get(rowKey);
+
+      const rowMatches = (r: GridRow) =>
+        isSimplePlot
+          ? r.plot_no === row.plot_no
+          : r.genotype_id === row.genotype_id &&
+            r.environment_id === row.environment_id &&
+            r.replication === row.replication;
 
       // Optimistic: update value in cache immediately
       queryClient.setQueryData(
@@ -207,11 +217,7 @@ export default function DataPengamatanPage() {
           return {
             ...old,
             rows: old.rows.map((r) =>
-              r.genotype_id === row.genotype_id &&
-              r.environment_id === row.environment_id &&
-              r.replication === row.replication
-                ? { ...r, values: { ...r.values, [characteristic.code]: value } }
-                : r
+              rowMatches(r) ? { ...r, values: { ...r.values, [characteristic.code]: value } } : r
             ),
           };
         }
@@ -219,13 +225,19 @@ export default function DataPengamatanPage() {
 
       if (!recordId) {
         // Auto-create record + first value in one POST
-        const res = await phenotypingService.createRecord({
-          plot_no:        row.plot_no,
-          genotype_id:    row.genotype_id,
-          environment_id: row.environment_id,
-          replication:    row.replication,
-          values: [{ characteristic_id: characteristic.id, value }],
-        } as Parameters<typeof phenotypingService.createRecord>[0]);
+        const payload: Record<string, unknown> = {
+          trial_id:    trialFilter ? Number(trialFilter) : undefined,
+          plot_no:     row.plot_no,
+          replication: row.replication,
+          values:      [{ characteristic_id: characteristic.id, value }],
+        };
+        if (!isSimplePlot) {
+          payload.genotype_id    = row.genotype_id;
+          payload.environment_id = row.environment_id;
+        }
+        const res = await phenotypingService.createRecord(
+          payload as Parameters<typeof phenotypingService.createRecord>[0]
+        );
         recordId = res.data.id;
         runtimeRecordIds.current.set(rowKey, recordId);
 
@@ -237,11 +249,7 @@ export default function DataPengamatanPage() {
             return {
               ...old,
               rows: old.rows.map((r) =>
-                r.genotype_id === row.genotype_id &&
-                r.environment_id === row.environment_id &&
-                r.replication === row.replication
-                  ? { ...r, record_id: recordId }
-                  : r
+                rowMatches(r) ? { ...r, record_id: recordId } : r
               ),
             };
           }
@@ -254,7 +262,7 @@ export default function DataPengamatanPage() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queryClient, gridQueryKey.join(":")]
+    [queryClient, trialFilter, gridQueryKey.join(":")]
   );
 
   const { data: deletedData } = useQuery({
@@ -455,7 +463,7 @@ export default function DataPengamatanPage() {
             isLoading={gridLoading}
             canEdit={canEdit}
             onCellChange={handleCellChange}
-            onViewRow={(r) => r.record_id !== null ? setViewingRecord({ id: r.record_id, plot_no: r.plot_no, genotype_id: r.genotype_id, genotype: r.genotype as ObservationRecord["genotype"], environment_id: r.environment_id, environment: r.environment as ObservationRecord["environment"], replication: r.replication, values: r.values, record_code: "", season_id: 0, created_at: "", updated_at: "" }) : undefined}
+            onViewRow={(r) => r.record_id !== null ? setViewingRecord({ id: r.record_id, plot_no: r.plot_no, genotype_id: r.genotype_id ?? 0, genotype: r.genotype as ObservationRecord["genotype"], environment_id: r.environment_id ?? 0, environment: r.environment as ObservationRecord["environment"], replication: r.replication, values: r.values, record_code: "", season_id: 0, created_at: "", updated_at: "" }) : undefined}
             onDeleteRow={canEdit ? (r) => { if (r.record_id && confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.record_id); } : undefined}
           />
         </div>

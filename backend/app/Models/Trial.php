@@ -16,7 +16,7 @@ class Trial extends Model
         'objective', 'layout_design', 'replications', 'plot_size_m2',
         'num_genotypes', 'num_locations', 'num_seasons',
         'row_spacing_cm', 'plant_spacing_cm', 'planting_date', 'harvest_date',
-        'status', 'notes', 'principal_researcher_id', 'created_by',
+        'num_plots', 'status', 'notes', 'principal_researcher_id', 'created_by',
     ];
 
     protected $casts = [

@@ -172,6 +172,7 @@ export interface Trial {
   objective?: string;
   layout_design: string;
   replications: number;
+  num_plots?: number | null;
   plot_size_m2?: number;
   planting_date?: string;
   harvest_date?: string;
@@ -385,16 +386,17 @@ export interface ObservationRecord {
 
 /**
  * A virtual row in the Data Pengamatan spreadsheet.
- * Generated from Trial.genotypes × Trial.environments × replications.
+ * Matrix mode: generated from Trial.genotypes × Trial.environments × replications.
+ * Simple-plot mode: generated from Trial.num_plots (rows 1..N, genotype/environment null).
  * record_id is null when no ObservationRecord has been saved for this slot yet.
  */
 export interface GridRow {
   entry_number: number;
   plot_no: string;
-  genotype_id: number;
-  genotype: Pick<Genotype, 'id' | 'genotype_code' | 'genotype_name'>;
-  environment_id: number;
-  environment: Pick<Environment, 'id' | 'environment_code'> & { name?: string };
+  genotype_id: number | null;
+  genotype: (Pick<Genotype, 'id' | 'genotype_code' | 'genotype_name'>) | null;
+  environment_id: number | null;
+  environment: (Pick<Environment, 'id' | 'environment_code'> & { name?: string }) | null;
   replication: number;
   record_id: number | null;
   values: Record<string, number | null>;

@@ -32,49 +32,69 @@ class ObservationRecordController extends Controller
             'environments',
         ])->findOrFail($request->trial_id);
 
+        $trialMeta = [
+            'id'          => $trial->id,
+            'trial_name'  => $trial->trial_name,
+            'replications' => $trial->replications,
+            'num_plots'   => $trial->num_plots,
+        ];
+
+        // ── Simple-plot mode: num_plots set, no genotypes assigned ──────────────
+        if ($trial->num_plots && $trial->genotypes->isEmpty()) {
+            $records = ObservationRecord::with(['values.characteristic'])
+                ->where('trial_id', $trial->id)
+                ->whereNull('genotype_id')
+                ->get();
+
+            $plotIndex = $records->keyBy('plot_no');
+
+            $rows = [];
+            for ($i = 1; $i <= $trial->num_plots; $i++) {
+                $record = $plotIndex->get((string) $i);
+                $values = $this->extractValues($record);
+                $rows[] = [
+                    'entry_number'   => $i,
+                    'plot_no'        => (string) $i,
+                    'genotype_id'    => null,
+                    'genotype'       => null,
+                    'environment_id' => null,
+                    'environment'    => null,
+                    'replication'    => 1,
+                    'record_id'      => $record?->id,
+                    'values'         => empty($values) ? (object) [] : $values,
+                ];
+            }
+
+            return response()->json(['trial' => array_merge($trialMeta, ['mode' => 'simple']), 'rows' => $rows]);
+        }
+
+        // ── Matrix mode: genotypes × environments × replications ────────────────
         $environments = $request->filled('environment_id')
             ? $trial->environments->where('id', $request->environment_id)->values()
             : $trial->environments->values();
 
         if ($environments->isEmpty() || $trial->genotypes->isEmpty()) {
-            return response()->json([
-                'trial' => ['id' => $trial->id, 'trial_name' => $trial->trial_name, 'replications' => $trial->replications],
-                'rows'  => [],
-            ]);
+            return response()->json(['trial' => $trialMeta, 'rows' => []]);
         }
 
         $genotypeIds = $trial->genotypes->pluck('id')->toArray();
         $envIds      = $environments->pluck('id')->toArray();
 
-        // Load all existing records for this trial's genotypes + environments
         $records = ObservationRecord::with(['values.characteristic'])
             ->whereIn('genotype_id', $genotypeIds)
             ->whereIn('environment_id', $envIds)
             ->get();
 
-        // Index: "genotypeId:envId:replication" → record
         $index = $records->keyBy(fn ($r) => "{$r->genotype_id}:{$r->environment_id}:{$r->replication}");
 
         $rows = [];
         foreach ($trial->genotypes as $idx => $genotype) {
             $entryNumber = $genotype->pivot->entry_number ?? ($idx + 1);
-
             foreach ($environments as $env) {
                 for ($rep = 1; $rep <= $trial->replications; $rep++) {
                     $key    = "{$genotype->id}:{$env->id}:{$rep}";
                     $record = $index->get($key);
-
-                    $values = [];
-                    if ($record) {
-                        $values = $record->values
-                            ->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id)
-                            ->mapWithKeys(fn ($group, $code) => [
-                                $code => $group->count() > 1
-                                    ? round($group->whereNotNull('value')->avg('value'), 4)
-                                    : ($group->first()?->value !== null ? (float) $group->first()->value : null),
-                            ])->toArray();
-                    }
-
+                    $values = $this->extractValues($record);
                     $rows[] = [
                         'entry_number'   => $entryNumber,
                         'plot_no'        => $record?->plot_no ?? (string) $entryNumber,
@@ -98,10 +118,19 @@ class ObservationRecordController extends Controller
             }
         }
 
-        return response()->json([
-            'trial' => ['id' => $trial->id, 'trial_name' => $trial->trial_name, 'replications' => $trial->replications],
-            'rows'  => $rows,
-        ]);
+        return response()->json(['trial' => $trialMeta, 'rows' => $rows]);
+    }
+
+    private function extractValues(?ObservationRecord $record): array
+    {
+        if (!$record) return [];
+        return $record->values
+            ->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id)
+            ->mapWithKeys(fn ($group, $code) => [
+                $code => $group->count() > 1
+                    ? round($group->whereNotNull('value')->avg('value'), 4)
+                    : ($group->first()?->value !== null ? (float) $group->first()->value : null),
+            ])->toArray();
     }
 
     public function index(Request $request): JsonResponse
@@ -123,9 +152,10 @@ class ObservationRecordController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'trial_id' => ['nullable', 'exists:trials,id'],
             'plot_no' => ['required', 'string', 'max:20'],
-            'genotype_id' => ['required', 'exists:genotypes,id'],
-            'environment_id' => ['required', 'exists:environments,id'],
+            'genotype_id' => ['nullable', 'exists:genotypes,id'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
             'season_id' => ['nullable', 'exists:seasons,id'],
             'replication' => ['required', 'integer', 'min:1'],
             'notes' => ['nullable', 'string'],
@@ -134,7 +164,10 @@ class ObservationRecordController extends Controller
             'values.*.value' => ['nullable', 'numeric'],
         ]);
 
-        if (empty($data['season_id'])) {
+        // Simple-plot mode: trial_id provided, no genotype/environment
+        $isSimplePlot = !empty($data['trial_id']) && empty($data['genotype_id']) && empty($data['environment_id']);
+
+        if (!$isSimplePlot && empty($data['season_id']) && !empty($data['environment_id'])) {
             $data['season_id'] = Environment::find($data['environment_id'])?->season_id;
         }
 
@@ -144,13 +177,21 @@ class ObservationRecordController extends Controller
         $values = $data['values'] ?? [];
         unset($data['values']);
 
-        // If a soft-deleted record exists with the same unique key, restore it
-        $existing = ObservationRecord::withTrashed()
-            ->where('environment_id', $data['environment_id'])
-            ->where('season_id', $data['season_id'] ?? null)
-            ->where('plot_no', $data['plot_no'])
-            ->where('replication', $data['replication'])
-            ->first();
+        // Check for existing record (different logic per mode)
+        if ($isSimplePlot) {
+            $existing = ObservationRecord::withTrashed()
+                ->where('trial_id', $data['trial_id'])
+                ->whereNull('genotype_id')
+                ->where('plot_no', $data['plot_no'])
+                ->first();
+        } else {
+            $existing = ObservationRecord::withTrashed()
+                ->where('environment_id', $data['environment_id'])
+                ->where('season_id', $data['season_id'] ?? null)
+                ->where('plot_no', $data['plot_no'])
+                ->where('replication', $data['replication'])
+                ->first();
+        }
 
         if ($existing && $existing->trashed()) {
             $existing->restore();
@@ -158,7 +199,7 @@ class ObservationRecordController extends Controller
             $record = $existing;
         } elseif ($existing) {
             return response()->json([
-                'message' => "Plot '{$data['plot_no']}' R{$data['replication']} sudah ada untuk environment ini. Gunakan fitur edit untuk mengubah nilainya.",
+                'message' => "Plot '{$data['plot_no']}' sudah ada. Gunakan fitur edit untuk mengubah nilainya.",
             ], 422);
         } else {
             $record = ObservationRecord::create($data);

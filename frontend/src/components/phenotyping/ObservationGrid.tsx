@@ -119,6 +119,7 @@ interface ActiveCell {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function cellKey(row: GridRow, charCode: string) {
+  if (row.genotype_id === null) return `plot:${row.plot_no}:${charCode}`;
   return `${row.genotype_id}:${row.environment_id}:${row.replication}:${charCode}`;
 }
 
@@ -190,9 +191,9 @@ export function ObservationGrid({
       rows.map((r) => ({
         row:              r,
         plot_no:          r.plot_no,
-        genotype_code:    r.genotype.genotype_code,
-        genotype_name:    r.genotype.genotype_name,
-        environment_code: r.environment.name ?? r.environment.environment_code,
+        genotype_code:    r.genotype?.genotype_code ?? "",
+        genotype_name:    r.genotype?.genotype_name ?? "",
+        environment_code: r.environment ? (r.environment.name ?? r.environment.environment_code) : "",
         replication:      r.replication,
         ...Object.fromEntries(characteristics.map((c) => [c.code, r.values?.[c.code] ?? null])),
       })),
