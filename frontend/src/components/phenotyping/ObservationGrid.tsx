@@ -135,7 +135,7 @@ function cellKey(row: GridRow, colId: string) {
   return `${row.genotype_id}:${row.environment_id}:${row.replication}:${charCode}${suffix}`;
 }
 
-function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
+function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false, isLastPinned = false): CSSProperties {
   const isPinned = column.getIsPinned();
   if (!isPinned) return isHeader ? { zIndex: 1 } : {};
   return {
@@ -146,9 +146,18 @@ function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSP
     maxWidth: `${column.getSize()}px`,
     zIndex: isHeader ? 30 : 20,
     backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",
-    // thin dark separator on the right edge of each pinned column
-    boxShadow: "inset -1px 0 0 rgba(55,65,81,0.45), 2px 0 5px -2px rgba(0,0,0,0.10)",
+    // last pinned col: thick solid black separator; intermediate: subtle divider
+    boxShadow: isLastPinned
+      ? "inset -3px 0 0 rgba(0,0,0,0.85), 4px 0 8px -3px rgba(0,0,0,0.18)"
+      : "inset -1px 0 0 rgba(0,0,0,0.15)",
   };
+}
+
+/** True when colId is the last column of its characteristic group (= a group boundary). */
+function isCharGroupBoundary(colId: string, numSamples: number): boolean {
+  if (STATIC_META_COLS.includes(colId) || colId === "__aksi__") return false;
+  if (!colId.includes("__s")) return true;          // single-sample mode: every char col
+  return colId.endsWith(`__s${numSamples}`);        // multi-sample mode: last sub-col of group
 }
 
 function loadFromLS<T>(key: string, fallback: T): T {
@@ -653,18 +662,35 @@ export function ObservationGrid({
           style={{ height: `${totalVirtHeight + 48}px`, position: "relative" }}
         >
           <thead className="bg-gray-50" style={{ position: "sticky", top: 0, zIndex: 40 }}>
-            {table.getHeaderGroups().map((hg) => (
+            {table.getHeaderGroups().map((hg) => {
+              const hgCount = table.getHeaderGroups().length;
+              const isLastHg = hg.depth === hgCount - 1;
+              return (
               <tr key={hg.id}>
-                {hg.headers.map((header) => (
+                {hg.headers.map((header) => {
+                  const isGroupParent = header.column.columns.length > 0;
+                  const colId = header.column.id;
+                  // A group-parent header spans its children → its right edge IS a char boundary
+                  const isBoundary = isGroupParent || isCharGroupBoundary(colId, numSamples);
+                  const pinnedLeafCols = table.getLeftLeafColumns();
+                  const lastPinnedId = pinnedLeafCols[pinnedLeafCols.length - 1]?.id;
+                  const isLastPinned = !!header.column.getIsPinned() && colId === lastPinnedId;
+                  return (
                   <th
                     key={header.id}
                     colSpan={header.colSpan}
-                    style={getPinningStyles(header.column, true)}
+                    style={getPinningStyles(header.column, true, isLastPinned)}
                     className={cn(
                       "px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50",
                       header.isPlaceholder
                         ? "py-0"
-                        : "py-2 border-r border-b border-gray-300"
+                        : cn(
+                            "py-2",
+                            // bottom border: thick black on the last header row, lighter on intermediate
+                            isLastHg ? "border-b-2 border-b-black" : "border-b border-b-gray-300",
+                            // right border: thick black on char group boundary, thin on others
+                            isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-300"
+                          )
                     )}
                   >
                     {!header.isPlaceholder && (
@@ -696,9 +722,11 @@ export function ObservationGrid({
                       </div>
                     )}
                   </th>
-                ))}
+                  );
+                })}
               </tr>
-            ))}
+            );
+            })}
           </thead>
 
           <tbody className="bg-white">
@@ -752,18 +780,25 @@ export function ObservationGrid({
                         const statusKey = isCharCol ? cellKey(gridRow, cell.column.id) : "";
                         const status    = isCharCol ? cellStatus[statusKey] : undefined;
 
+                        // Compute last-pinned for freeze separator
+                        const pinnedLeafCols = table.getLeftLeafColumns();
+                        const lastPinnedId = pinnedLeafCols[pinnedLeafCols.length - 1]?.id;
+                        const isLastPinned = isPinned && cell.column.id === lastPinnedId;
+
                         // ── Characteristic cell ──────────────────────────────
                         if (isCharCol && charColIdx >= 0) {
                           const { charCode } = parseColId(cell.column.id);
                           const char  = characteristics.find((c) => c.code === charCode);
                           const value = gridRow.values?.[cell.column.id] ?? null;
+                          const isBoundary = isCharGroupBoundary(cell.column.id, numSamples);
 
                           return (
                             <td
                               key={cell.id}
-                              style={getPinningStyles(cell.column)}
+                              style={getPinningStyles(cell.column, false, isLastPinned)}
                               className={cn(
-                                "px-0 py-0 relative border-r border-b border-gray-800",
+                                "px-0 py-0 relative border-b border-b-gray-700",
+                                isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-700",
                                 !isPinned && !isSelected && !isEditing && "group-hover:bg-gray-50/60",
                               )}
                             >
@@ -819,11 +854,12 @@ export function ObservationGrid({
                           <td
                             key={cell.id}
                             style={{
-                              ...getPinningStyles(cell.column),
+                              ...getPinningStyles(cell.column, false, isLastPinned),
                               ...(isPinned ? {} : { backgroundColor: isEmpty ? "rgb(255,251,235,0.4)" : "rgb(255,255,255)" }),
                             }}
                             className={cn(
-                              "px-2 py-1 whitespace-nowrap border-r border-b border-gray-300",
+                              "px-2 py-1 whitespace-nowrap border-b border-b-gray-300",
+                              isLastPinned ? "border-r-0" : "border-r border-r-gray-300",
                               isPinned ? "text-gray-600" : "text-gray-600 group-hover:bg-gray-50/60",
                             )}
                           >
