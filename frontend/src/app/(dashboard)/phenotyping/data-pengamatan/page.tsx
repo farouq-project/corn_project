@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, X, Sheet, Upload, Download, CheckCircle, XCircle, AlertTriangle, RefreshCw, RotateCcw, ChevronRight, ChevronLeft, Save, Eye, Trash2, History, Undo2, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
@@ -12,7 +12,7 @@ import { ObservationGrid } from "@/components/phenotyping/ObservationGrid";
 import { phenotypingService } from "@/services/phenotyping.service";
 import { genotypeService } from "@/services/genotype.service";
 import { cn } from "@/lib/utils";
-import type { Characteristic, Environment, Genotype, ObservationRecord, Trial } from "@/types";
+import type { Characteristic, Environment, Genotype, GridRow, ObservationRecord, Trial } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
 
@@ -172,14 +172,90 @@ export default function DataPengamatanPage() {
     }
   };
 
-  const { data: recordsData, isLoading } = useQuery({
-    queryKey: ["observation-records", environmentFilter],
+  // ── Grid query — requires a trial to be selected ──────────────────────────
+  const gridQueryKey = ["obs-grid", trialFilter, environmentFilter];
+  const { data: gridData, isLoading: gridLoading } = useQuery({
+    queryKey: gridQueryKey,
     queryFn: () =>
       phenotypingService
-        .getRecords({ per_page: 200, ...(environmentFilter ? { environment_id: environmentFilter } : {}) })
+        .getGrid({ trial_id: trialFilter, ...(environmentFilter ? { environment_id: environmentFilter } : {}) })
         .then((r) => r.data),
+    enabled: !!trialFilter,
+    staleTime: 30_000,
   });
-  const records: ObservationRecord[] = recordsData?.data ?? [];
+  const gridRows: GridRow[] = gridData?.rows ?? [];
+
+  // Track record IDs auto-created during this session (key = "genoId:envId:rep")
+  const runtimeRecordIds = useRef<Map<string, number>>(new Map());
+  // Reset runtime IDs when trial changes
+  const prevTrialFilter = useRef(trialFilter);
+  if (prevTrialFilter.current !== trialFilter) {
+    prevTrialFilter.current = trialFilter;
+    runtimeRecordIds.current.clear();
+  }
+
+  const handleCellChange = useCallback(
+    async (row: GridRow, characteristic: Characteristic, value: number | null) => {
+      const rowKey  = `${row.genotype_id}:${row.environment_id}:${row.replication}`;
+      let recordId = row.record_id ?? runtimeRecordIds.current.get(rowKey);
+
+      // Optimistic: update value in cache immediately
+      queryClient.setQueryData(
+        gridQueryKey,
+        (old: { trial: unknown; rows: GridRow[] } | undefined) => {
+          if (!old) return old;
+          return {
+            ...old,
+            rows: old.rows.map((r) =>
+              r.genotype_id === row.genotype_id &&
+              r.environment_id === row.environment_id &&
+              r.replication === row.replication
+                ? { ...r, values: { ...r.values, [characteristic.code]: value } }
+                : r
+            ),
+          };
+        }
+      );
+
+      if (!recordId) {
+        // Auto-create record + first value in one POST
+        const res = await phenotypingService.createRecord({
+          plot_no:        row.plot_no,
+          genotype_id:    row.genotype_id,
+          environment_id: row.environment_id,
+          replication:    row.replication,
+          values: [{ characteristic_id: characteristic.id, value }],
+        } as Parameters<typeof phenotypingService.createRecord>[0]);
+        recordId = res.data.id;
+        runtimeRecordIds.current.set(rowKey, recordId);
+
+        // Persist record_id into cache so next edits go to PATCH
+        queryClient.setQueryData(
+          gridQueryKey,
+          (old: { trial: unknown; rows: GridRow[] } | undefined) => {
+            if (!old) return old;
+            return {
+              ...old,
+              rows: old.rows.map((r) =>
+                r.genotype_id === row.genotype_id &&
+                r.environment_id === row.environment_id &&
+                r.replication === row.replication
+                  ? { ...r, record_id: recordId }
+                  : r
+              ),
+            };
+          }
+        );
+        return;
+      }
+
+      await phenotypingService.updateRecord(recordId, {
+        values: [{ characteristic_id: characteristic.id, value }],
+      });
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, gridQueryKey.join(":")]
+  );
 
   const { data: deletedData } = useQuery({
     queryKey: ["observation-records-deleted"],
@@ -190,24 +266,6 @@ export default function DataPengamatanPage() {
   const deletedRecords: ObservationRecord[] = deletedData ?? [];
 
 
-  const updateValueMutation = useMutation({
-    mutationFn: ({ record, characteristic, value }: { record: ObservationRecord; characteristic: Characteristic; value: number | null }) =>
-      phenotypingService.updateRecord(record.id, { values: [{ characteristic_id: characteristic.id, value }] }),
-    onMutate: async ({ record, characteristic, value }) => {
-      await queryClient.cancelQueries({ queryKey: ["observation-records", environmentFilter] });
-      const previous = queryClient.getQueryData<{ data: ObservationRecord[] }>(["observation-records", environmentFilter]);
-      queryClient.setQueryData<{ data: ObservationRecord[] } | undefined>(["observation-records", environmentFilter], (old) => {
-        if (!old) return old;
-        return { ...old, data: old.data.map((r) => r.id === record.id ? { ...r, values: { ...r.values, [characteristic.code]: value } } : r) };
-      });
-      return { previous };
-    },
-    onError: (error, _vars, context) => {
-      if (context?.previous) queryClient.setQueryData(["observation-records", environmentFilter], context.previous);
-      toast.error(getApiErrorMessage(error));
-    },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["observation-records"] }); },
-  });
 
   // Import queries & mutations
   const { data: batchesData } = useQuery({ queryKey: ["import-batches"], queryFn: () => api.get<{data:ImportBatch[]}>("/v1/phenotyping/import/batches").then(r => r.data.data), enabled: showImport, refetchInterval: showImport ? 5000 : false });
@@ -383,16 +441,22 @@ export default function DataPengamatanPage() {
           <Sheet className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">Belum ada karakteristik aktif. Tambahkan di Master Data → Pengamatan terlebih dahulu.</p>
         </div>
+      ) : !trialFilter ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-16 text-center text-gray-400 shadow-sm">
+          <Sheet className="w-12 h-12 mx-auto mb-3 opacity-30" />
+          <p className="text-sm font-medium text-gray-500 mb-1">Pilih Research Plan</p>
+          <p className="text-xs">Spreadsheet akan menampilkan semua plot berdasarkan genotipe dan lokasi dari Research Plan yang dipilih.</p>
+        </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
           <ObservationGrid
-            records={records}
+            rows={gridRows}
             characteristics={characteristics}
-            isLoading={isLoading}
+            isLoading={gridLoading}
             canEdit={canEdit}
-            onCellChange={async (record, characteristic, value) => { await updateValueMutation.mutateAsync({ record, characteristic, value }); }}
-            onViewRow={(r) => setViewingRecord(r)}
-            onDeleteRow={canEdit ? (r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.id); } : undefined}
+            onCellChange={handleCellChange}
+            onViewRow={(r) => r.record_id !== null ? setViewingRecord({ id: r.record_id, plot_no: r.plot_no, genotype_id: r.genotype_id, genotype: r.genotype as ObservationRecord["genotype"], environment_id: r.environment_id, environment: r.environment as ObservationRecord["environment"], replication: r.replication, values: r.values, record_code: "", season_id: 0, created_at: "", updated_at: "" }) : undefined}
+            onDeleteRow={canEdit ? (r) => { if (r.record_id && confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.record_id); } : undefined}
           />
         </div>
       )}

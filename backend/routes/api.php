@@ -226,6 +226,7 @@ Route::prefix('v1')->group(function () {
             Route::delete('characteristics/{characteristic}', [CharacteristicController::class, 'destroy']);
             Route::post('characteristics/import', [CharacteristicController::class, 'import']);
 
+            Route::get('grid', [ObservationRecordController::class, 'grid']);
             Route::get('records', [ObservationRecordController::class, 'index']);
             Route::post('records', [ObservationRecordController::class, 'store']);
             Route::put('records/{record}', [ObservationRecordController::class, 'update']);

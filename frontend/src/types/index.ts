@@ -383,6 +383,23 @@ export interface ObservationRecord {
   updated_at: string;
 }
 
+/**
+ * A virtual row in the Data Pengamatan spreadsheet.
+ * Generated from Trial.genotypes × Trial.environments × replications.
+ * record_id is null when no ObservationRecord has been saved for this slot yet.
+ */
+export interface GridRow {
+  entry_number: number;
+  plot_no: string;
+  genotype_id: number;
+  genotype: Pick<Genotype, 'id' | 'genotype_code' | 'genotype_name'>;
+  environment_id: number;
+  environment: Pick<Environment, 'id' | 'environment_code'> & { name?: string };
+  replication: number;
+  record_id: number | null;
+  values: Record<string, number | null>;
+}
+
 export interface AggregatedCharacteristicData {
   values: Record<string, number | null>;
   imputed: Record<string, boolean>;

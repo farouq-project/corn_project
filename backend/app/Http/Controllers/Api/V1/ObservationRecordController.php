@@ -7,6 +7,7 @@ use App\Models\Characteristic;
 use App\Models\Environment;
 use App\Models\ObservationRecord;
 use App\Models\ObservationValue;
+use App\Models\Trial;
 use App\Services\AuditService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,95 @@ use Illuminate\Support\Str;
 
 class ObservationRecordController extends Controller
 {
+    /**
+     * Generate a virtual spreadsheet grid for a trial.
+     * Rows = trial.genotypes × trial.environments × replications.
+     * Existing ObservationRecords are overlaid; missing rows return record_id = null.
+     */
+    public function grid(Request $request): JsonResponse
+    {
+        $request->validate([
+            'trial_id'       => ['required', 'exists:trials,id'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
+        ]);
+
+        $trial = Trial::with([
+            'genotypes' => fn ($q) => $q->orderByPivot('entry_number'),
+            'environments',
+        ])->findOrFail($request->trial_id);
+
+        $environments = $request->filled('environment_id')
+            ? $trial->environments->where('id', $request->environment_id)->values()
+            : $trial->environments->values();
+
+        if ($environments->isEmpty() || $trial->genotypes->isEmpty()) {
+            return response()->json([
+                'trial' => ['id' => $trial->id, 'trial_name' => $trial->trial_name, 'replications' => $trial->replications],
+                'rows'  => [],
+            ]);
+        }
+
+        $genotypeIds = $trial->genotypes->pluck('id')->toArray();
+        $envIds      = $environments->pluck('id')->toArray();
+
+        // Load all existing records for this trial's genotypes + environments
+        $records = ObservationRecord::with(['values.characteristic'])
+            ->whereIn('genotype_id', $genotypeIds)
+            ->whereIn('environment_id', $envIds)
+            ->get();
+
+        // Index: "genotypeId:envId:replication" → record
+        $index = $records->keyBy(fn ($r) => "{$r->genotype_id}:{$r->environment_id}:{$r->replication}");
+
+        $rows = [];
+        foreach ($trial->genotypes as $idx => $genotype) {
+            $entryNumber = $genotype->pivot->entry_number ?? ($idx + 1);
+
+            foreach ($environments as $env) {
+                for ($rep = 1; $rep <= $trial->replications; $rep++) {
+                    $key    = "{$genotype->id}:{$env->id}:{$rep}";
+                    $record = $index->get($key);
+
+                    $values = [];
+                    if ($record) {
+                        $values = $record->values
+                            ->groupBy(fn ($v) => $v->characteristic?->code ?? $v->characteristic_id)
+                            ->mapWithKeys(fn ($group, $code) => [
+                                $code => $group->count() > 1
+                                    ? round($group->whereNotNull('value')->avg('value'), 4)
+                                    : ($group->first()?->value !== null ? (float) $group->first()->value : null),
+                            ])->toArray();
+                    }
+
+                    $rows[] = [
+                        'entry_number'   => $entryNumber,
+                        'plot_no'        => $record?->plot_no ?? (string) $entryNumber,
+                        'genotype_id'    => $genotype->id,
+                        'genotype'       => [
+                            'id'            => $genotype->id,
+                            'genotype_code' => $genotype->genotype_code,
+                            'genotype_name' => $genotype->genotype_name,
+                        ],
+                        'environment_id' => $env->id,
+                        'environment'    => [
+                            'id'               => $env->id,
+                            'environment_code' => $env->environment_code,
+                            'name'             => $env->name,
+                        ],
+                        'replication' => $rep,
+                        'record_id'   => $record?->id,
+                        'values'      => empty($values) ? (object) [] : $values,
+                    ];
+                }
+            }
+        }
+
+        return response()->json([
+            'trial' => ['id' => $trial->id, 'trial_name' => $trial->trial_name, 'replications' => $trial->replications],
+            'rows'  => $rows,
+        ]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $query = ObservationRecord::with(['genotype', 'environment.location', 'environment.season', 'recorder', 'values.characteristic'])

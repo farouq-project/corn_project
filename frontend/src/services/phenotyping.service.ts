@@ -1,5 +1,5 @@
 import api from "@/lib/axios";
-import type { AggregatedRow, Characteristic, ObservationRecord, PaginatedResponse } from "@/types";
+import type { AggregatedRow, Characteristic, GridRow, ObservationRecord, PaginatedResponse, Trial } from "@/types";
 
 export const phenotypingService = {
   getCharacteristics: (params?: Record<string, unknown>) =>
@@ -13,6 +13,12 @@ export const phenotypingService = {
 
   deleteCharacteristic: (id: number) =>
     api.delete(`/v1/phenotyping/characteristics/${id}`),
+
+  getGrid: (params: { trial_id: number | string; environment_id?: number | string }) =>
+    api.get<{ trial: Pick<Trial, 'id' | 'trial_name' | 'replications'>; rows: GridRow[] }>(
+      "/v1/phenotyping/grid",
+      { params }
+    ),
 
   getRecords: (params?: Record<string, unknown>) =>
     api.get<PaginatedResponse<ObservationRecord>>("/v1/phenotyping/records", { params }),
