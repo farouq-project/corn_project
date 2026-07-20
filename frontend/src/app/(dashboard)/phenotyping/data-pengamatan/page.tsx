@@ -389,9 +389,10 @@ export default function DataPengamatanPage() {
             records={records}
             characteristics={characteristics}
             isLoading={isLoading}
-            onCellChange={(record, characteristic, value) => updateValueMutation.mutate({ record, characteristic, value })}
+            canEdit={canEdit}
+            onCellChange={async (record, characteristic, value) => { await updateValueMutation.mutateAsync({ record, characteristic, value }); }}
             onViewRow={(r) => setViewingRecord(r)}
-            onDeleteRow={(r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.id); }}
+            onDeleteRow={canEdit ? (r) => { if (confirm(`Hapus baris Plot ${r.plot_no} R${r.replication}? (bisa dipulihkan dalam 30 hari)`)) deleteRecordMutation.mutate(r.id); } : undefined}
           />
         </div>
       )}

@@ -1,13 +1,35 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+/**
+ * ObservationGrid — Excel-like spreadsheet editor for phenotyping data.
+ *
+ * Features:
+ * - Frozen columns (Plot, Kode Gen, Gen, Environment, R)
+ * - Dynamic characteristic columns with column chooser (persisted to localStorage)
+ * - Single-click → select cell; double-click / Enter / typing → edit mode
+ * - Auto-save on Tab / Enter / blur with per-cell status (Saving… / ✓ / ✗)
+ * - Keyboard navigation: Arrow keys, Tab, Shift+Tab, Enter, Escape, Delete
+ * - Ctrl+V paste from Excel (TSV format)
+ * - Row virtualisation via @tanstack/react-virtual (handles 5000+ rows)
+ * - Sort and filter per column
+ */
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
-  flexRender,
   createColumnHelper,
+  flexRender,
   type ColumnDef,
   type Column,
   type SortingState,
@@ -15,148 +37,211 @@ import {
   type ColumnPinningState,
   type VisibilityState,
 } from "@tanstack/react-table";
-import { ChevronUp, ChevronDown, ChevronsUpDown, Columns3, Pin, PinOff, Eye, Edit2, Trash2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  Columns3,
+  Pin,
+  PinOff,
+  Eye,
+  Trash2,
+  Loader2,
+  Check,
+  AlertCircle,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Characteristic, ObservationRecord } from "@/types";
 
+// ── Constants ────────────────────────────────────────────────────────────────
+
+const LS_VISIBILITY_KEY = "obs-grid-col-visibility-v2";
+const LS_PINNING_KEY    = "obs-grid-col-pinning-v2";
+
+const DEFAULT_PINNED: string[] = [
+  "plot_no",
+  "genotype_code",
+  "genotype_name",
+  "environment_code",
+  "replication",
+];
+
+const STATIC_META_COLS = [
+  "plot_no",
+  "genotype_code",
+  "genotype_name",
+  "environment_code",
+  "replication",
+  "staff_name",
+  "submitted_at",
+];
+
+const COL_LABELS: Record<string, string> = {
+  plot_no:          "No Plot",
+  genotype_code:    "Kode Gen",
+  genotype_name:    "Gen",
+  environment_code: "Lokasi",
+  replication:      "R",
+  staff_name:       "Staff",
+  submitted_at:     "Submit",
+};
+
+const COL_WIDTHS: Record<string, number> = {
+  plot_no:          68,
+  genotype_code:    80,
+  genotype_name:    90,
+  environment_code: 88,
+  replication:      40,
+  staff_name:       92,
+  submitted_at:     84,
+};
+
+const ROW_HEIGHT = 34; // px — keep in sync with cell padding
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
 interface ObservationGridProps {
-  records: ObservationRecord[];
+  records:         ObservationRecord[];
   characteristics: Characteristic[];
-  isLoading?: boolean;
-  onCellChange: (record: ObservationRecord, characteristic: Characteristic, value: number | null) => void;
-  onEditRow?: (record: ObservationRecord) => void;
-  onDeleteRow?: (record: ObservationRecord) => void;
-  onViewRow?: (record: ObservationRecord) => void;
+  isLoading?:      boolean;
+  canEdit?:        boolean;
+  onCellChange:    (record: ObservationRecord, characteristic: Characteristic, value: number | null) => Promise<void>;
+  onViewRow?:      (record: ObservationRecord) => void;
+  onDeleteRow?:    (record: ObservationRecord) => void;
 }
 
 interface RowData {
-  record: ObservationRecord;
-  plot_no: string;
-  genotype_code: string;
-  genotype_name: string;
-  environment_code: string;
-  replication: number;
-  staff_name: string;
-  submitted_at: string;
-  [characteristicCode: string]: unknown;
+  record:          ObservationRecord;
+  plot_no:         string;
+  genotype_code:   string;
+  genotype_name:   string;
+  environment_code:string;
+  replication:     number;
+  staff_name:      string;
+  submitted_at:    string;
+  [charCode: string]: unknown;
 }
 
-const columnHelper = createColumnHelper<RowData>();
+type CellSaveStatus = "saving" | "saved" | "error";
 
-const DEFAULT_PINNED_COLUMNS = ["plot_no", "genotype_code", "genotype_name", "environment_code", "replication"];
+interface ActiveCell {
+  rowIdx:      number; // index in table.getRowModel().rows
+  charColIdx:  number; // index in visibleCharCols
+}
 
-const STATIC_COLUMN_LABELS: Record<string, string> = {
-  plot_no: "No Plot",
-  genotype_code: "Kode Gen",
-  staff_name: "Staff",
-  submitted_at: "Tgl Submit",
-  genotype_name: "Gen",
-  environment_code: "Lokasi",
-  replication: "R",
-};
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Returns inline styles for sticky (frozen) columns.
- *  The inline backgroundColor is CRITICAL — it overrides any class-based hover/bg
- *  so scrolled content cannot bleed through the frozen pane.
- */
+function cellKey(recordId: number, charCode: string) {
+  return `${recordId}:${charCode}`;
+}
+
 function getPinningStyles<T>(column: Column<RowData, T>, isHeader = false): CSSProperties {
   const isPinned = column.getIsPinned();
-  if (!isPinned) {
-    return isHeader ? { zIndex: 1 } : {};
-  }
-
-  // Exact pixel width from TanStack Table's size — CRITICAL for preventing the
-  // transparent strip between the sticky cell's visual edge and its actual boundary.
-  const size = column.getSize();
-  const left = column.getStart("left");
-
+  if (!isPinned) return isHeader ? { zIndex: 1 } : {};
   return {
     position: "sticky",
-    left: `${left}px`,
-    // Width must match exactly so the opaque background covers the full cell area
-    width: `${size}px`,
-    minWidth: `${size}px`,
-    maxWidth: `${size}px`,
+    left: `${column.getStart("left")}px`,
+    width: `${column.getSize()}px`,
+    minWidth: `${column.getSize()}px`,
+    maxWidth: `${column.getSize()}px`,
     zIndex: isHeader ? 30 : 20,
     backgroundColor: isHeader ? "rgb(249,250,251)" : "rgb(255,255,255)",
-    // Solid 1px right border acts as the frozen-pane divider (more reliable than box-shadow)
-    boxShadow: "inset -1px 0 0 rgb(209,213,219), 3px 0 8px -3px rgba(0,0,0,0.12)",
+    boxShadow: "inset -1px 0 0 rgb(209,213,219), 3px 0 8px -3px rgba(0,0,0,0.10)",
   };
 }
 
-function EditableCell({
-  value,
-  decimalPlaces,
-  onCommit,
-}: {
-  value: number | null;
-  decimalPlaces: number;
-  onCommit: (value: number | null) => void;
-}) {
-  const [draft, setDraft] = useState(value === null || value === undefined ? "" : String(value));
-
-  return (
-    <input
-      type="number"
-      step="any"
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        const num = draft.trim() === "" ? null : Number(draft);
-        const rounded = num !== null ? Number(num.toFixed(decimalPlaces)) : null;
-        if (rounded !== (value ?? null)) onCommit(rounded);
-      }}
-      className="w-16 md:w-20 px-1.5 py-2 md:py-1 text-right text-sm border border-transparent rounded focus:border-green-400 focus:outline-none focus:bg-green-50 bg-transparent hover:bg-gray-50"
-    />
-  );
+function loadFromLS<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
-export function ObservationGrid({ records, characteristics, isLoading, onCellChange, onEditRow, onDeleteRow, onViewRow }: ObservationGridProps) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({ left: DEFAULT_PINNED_COLUMNS });
-  const [showColumnMenu, setShowColumnMenu] = useState(false);
+function saveToLS(key: string, value: unknown) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+}
+
+// ── Column helper ─────────────────────────────────────────────────────────────
+
+const columnHelper = createColumnHelper<RowData>();
+
+// ── Main component ────────────────────────────────────────────────────────────
+
+export function ObservationGrid({
+  records,
+  characteristics,
+  isLoading,
+  canEdit = true,
+  onCellChange,
+  onViewRow,
+  onDeleteRow,
+}: ObservationGridProps) {
+  // ── Table-level state ──────────────────────────────────────────────────────
+  const [sorting,         setSorting]         = useState<SortingState>([]);
+  const [columnFilters,   setColumnFilters]   = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    () => loadFromLS<VisibilityState>(LS_VISIBILITY_KEY, {})
+  );
+  const [columnPinning,   setColumnPinning]   = useState<ColumnPinningState>(
+    () => loadFromLS<ColumnPinningState>(LS_PINNING_KEY, { left: DEFAULT_PINNED })
+  );
+  const [showColumnMenu,  setShowColumnMenu]  = useState(false);
+
+  // Persist visibility + pinning changes
+  useEffect(() => saveToLS(LS_VISIBILITY_KEY, columnVisibility), [columnVisibility]);
+  useEffect(() => saveToLS(LS_PINNING_KEY, columnPinning), [columnPinning]);
+
+  // ── Spreadsheet state ──────────────────────────────────────────────────────
+  const [activeCell,   setActiveCell]   = useState<ActiveCell | null>(null);
+  const [editingCell,  setEditingCell]  = useState<ActiveCell | null>(null);
+  const [editValue,    setEditValue]    = useState<string>("");
+  const [cellStatus,   setCellStatus]   = useState<Record<string, CellSaveStatus>>({});
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef     = useRef<HTMLInputElement>(null);
+
+  // ── Data transform ─────────────────────────────────────────────────────────
+  const data = useMemo<RowData[]>(
+    () =>
+      records.map((r) => ({
+        record:           r,
+        plot_no:          r.plot_no,
+        genotype_code:    r.genotype?.genotype_code ?? "",
+        genotype_name:    r.genotype?.genotype_name ?? "",
+        environment_code: (r.environment as { name?: string; environment_code?: string } | undefined)?.name
+                          ?? r.environment?.environment_code ?? "",
+        replication:      r.replication,
+        staff_name:       r.recorder?.name ?? "—",
+        submitted_at:     r.created_at
+          ? new Date(r.created_at).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "2-digit" })
+          : "—",
+        ...Object.fromEntries(characteristics.map((c) => [c.code, r.values?.[c.code] ?? null])),
+      })),
+    [records, characteristics]
+  );
 
   const charLabelMap = useMemo(
     () => Object.fromEntries(characteristics.map((c) => [c.code, c.name])),
     [characteristics]
   );
 
-  const data = useMemo<RowData[]>(
-    () =>
-      records.map((record) => ({
-        record,
-        plot_no: record.plot_no,
-        genotype_code: record.genotype?.genotype_code ?? "",
-        genotype_name: record.genotype?.genotype_name ?? "",
-        environment_code: record.environment?.name ?? record.environment?.environment_code ?? "",
-        replication: record.replication,
-        staff_name: (record as ObservationRecord & { staff_name?: string }).staff_name ?? record.recorder?.name ?? "—",
-        submitted_at: record.created_at ? new Date(record.created_at).toLocaleDateString("id-ID", { day:"2-digit", month:"short", year:"numeric" }) : "—",
-        ...Object.fromEntries(characteristics.map((c) => [c.code, record.values?.[c.code] ?? null])),
-      })),
-    [records, characteristics]
-  );
-
-  const COLUMN_WIDTHS: Record<string, number> = {
-    plot_no: 70,
-    genotype_code: 80,
-    genotype_name: 90,
-    environment_code: 80,
-    replication: 44,
-    staff_name: 90,
-    submitted_at: 90,
-  };
-
+  // ── Columns ────────────────────────────────────────────────────────────────
   const columns = useMemo<ColumnDef<RowData, unknown>[]>(() => {
-    const staticCols = (["plot_no", "genotype_code", "genotype_name", "environment_code", "replication", "staff_name", "submitted_at"] as const).map((id) =>
-      columnHelper.accessor(id, {
+    const staticCols = STATIC_META_COLS.map((id) =>
+      columnHelper.accessor((row) => row[id as keyof RowData] as string | number, {
         id,
-        size: COLUMN_WIDTHS[id],
-        header: STATIC_COLUMN_LABELS[id],
+        size: COL_WIDTHS[id] ?? 80,
+        header: COL_LABELS[id] ?? id,
         cell: (info) => (
-          <span className={id === "environment_code" ? "block text-xs leading-tight break-words whitespace-normal max-w-[80px]" : "whitespace-nowrap text-xs"}>
+          <span className={cn(
+            "text-xs select-none",
+            id === "environment_code"
+              ? "block whitespace-normal break-words max-w-[88px]"
+              : "whitespace-nowrap"
+          )}>
             {info.getValue() as string | number}
           </span>
         ),
@@ -166,149 +251,444 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
     const charCols = characteristics.map((c) =>
       columnHelper.accessor((row) => row[c.code] as number | null, {
         id: c.code,
+        size: 72,
+        enableColumnFilter: false,
         header: () => (
-          <div className="text-center leading-tight" title={c.name + (c.unit ? ` (${c.unit})` : "")}>
+          <div className="text-center leading-tight" title={`${c.name}${c.unit ? ` (${c.unit})` : ""}`}>
             <div>{c.code}</div>
             {c.unit && <div className="text-[10px] text-gray-400 normal-case font-normal">({c.unit})</div>}
           </div>
         ),
-        cell: ({ row, getValue }) => {
-          const value = getValue() as number | null;
-          return (
-            <EditableCell
-              key={`${row.original.record.id}-${c.code}-${value ?? ""}`}
-              value={value}
-              decimalPlaces={c.decimal_places}
-              onCommit={(newValue) => onCellChange(row.original.record, c, newValue)}
-            />
-          );
-        },
+        // Cell rendering is handled in the tbody loop (not via columnDef.cell) so we can
+        // access the virtualised rowIdx and spreadsheet state. Return null here as placeholder.
+        cell: () => null,
       })
     );
 
-    // Aksi column — only added when row action handlers are provided
-    const aksiCol: ColumnDef<RowData, unknown>[] = (onEditRow || onDeleteRow || onViewRow) ? [{
-      id: "__aksi__",
-      header: "Aksi",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-1">
-          {onViewRow && <button onClick={() => onViewRow(row.original.record)} title="Lihat Detail" className="p-1.5 rounded hover:bg-blue-50 text-blue-400 transition"><Eye className="w-3.5 h-3.5"/></button>}
-          {onEditRow && <button onClick={() => onEditRow(row.original.record)} title="Edit" className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500 transition"><Edit2 className="w-3.5 h-3.5"/></button>}
-          {onDeleteRow && <button onClick={() => onDeleteRow(row.original.record)} title="Hapus" className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"><Trash2 className="w-3.5 h-3.5"/></button>}
-        </div>
-      ),
-    }] : [];
+    const aksiCol: ColumnDef<RowData, unknown>[] =
+      onViewRow || onDeleteRow
+        ? [{
+            id:     "__aksi__",
+            size:   72,
+            header: "Aksi",
+            enableSorting:       false,
+            enableColumnFilter:  false,
+            cell: ({ row }) => (
+              <div className="flex items-center gap-1">
+                {onViewRow && (
+                  <button
+                    onClick={() => onViewRow(row.original.record)}
+                    className="p-1.5 rounded hover:bg-blue-50 text-blue-400 transition"
+                    title="Detail"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                {canEdit && onDeleteRow && (
+                  <button
+                    onClick={() => onDeleteRow(row.original.record)}
+                    className="p-1.5 rounded hover:bg-red-50 text-red-400 transition"
+                    title="Hapus"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ),
+          }]
+        : [];
 
     return [...staticCols, ...charCols, ...aksiCol] as ColumnDef<RowData, unknown>[];
-  }, [characteristics, onCellChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [characteristics, canEdit, onViewRow, onDeleteRow]);
 
+  // ── TanStack Table ─────────────────────────────────────────────────────────
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnFilters, columnVisibility, columnPinning },
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    state:      { sorting, columnFilters, columnVisibility, columnPinning },
+    onSortingChange:          setSorting,
+    onColumnFiltersChange:    setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    onColumnPinningChange: setColumnPinning,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
+    onColumnPinningChange:    setColumnPinning,
+    getCoreRowModel:      getCoreRowModel(),
+    getSortedRowModel:    getSortedRowModel(),
+    getFilteredRowModel:  getFilteredRowModel(),
   });
 
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-gray-400 md:hidden">Geser tabel ke samping untuk melihat kolom lainnya</p>
-        <div className="flex justify-end relative ml-auto">
-        <button
-          onClick={() => setShowColumnMenu((v) => !v)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-        >
-          <Columns3 className="w-3.5 h-3.5" />
-          Kolom
-        </button>
+  const tableRows = table.getRowModel().rows;
 
-        {showColumnMenu && (
-          <div className="absolute right-0 top-9 z-20 w-64 max-w-[80vw] max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg p-2">
-            <div className="flex gap-1.5 mb-2 pb-2 border-b border-gray-100">
-              <button
-                onClick={() => table.getAllLeafColumns().forEach((c) => c.toggleVisibility(true))}
-                className="flex-1 text-xs py-1 px-2 rounded bg-green-50 text-green-700 hover:bg-green-100 transition"
-              >
-                Pilih Semua
-              </button>
-              <button
-                onClick={() =>
-                  table.getAllLeafColumns()
-                    .filter((c) => !DEFAULT_PINNED_COLUMNS.includes(c.id) && c.id !== "__aksi__")
-                    .forEach((c) => c.toggleVisibility(false))
-                }
-                className="flex-1 text-xs py-1 px-2 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 transition"
-              >
-                Batal Semua
-              </button>
-            </div>
-            {table.getAllLeafColumns().map((column) => {
-              const isPinned = column.getIsPinned();
-              return (
-                <div key={column.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50 text-sm">
-                  <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={column.getIsVisible()}
-                      onChange={column.getToggleVisibilityHandler()}
-                      className="accent-green-600"
-                    />
-                    <span className="truncate">{STATIC_COLUMN_LABELS[column.id] ?? charLabelMap[column.id] ?? column.id}</span>
-                  </label>
-                  <button
-                    onClick={() => column.pin(isPinned ? false : "left")}
-                    title={isPinned ? "Lepas pin" : "Pin kolom"}
-                    className="flex-shrink-0 text-gray-400 hover:text-green-600"
-                  >
-                    {isPinned ? <Pin className="w-3.5 h-3.5 fill-current" /> : <PinOff className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+  // ── Virtualisation ─────────────────────────────────────────────────────────
+  const rowVirtualizer = useVirtualizer({
+    count:            tableRows.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize:     () => ROW_HEIGHT,
+    overscan:         12,
+  });
+
+  const virtualItems  = rowVirtualizer.getVirtualItems();
+  const totalVirtHeight = rowVirtualizer.getTotalSize();
+  const paddingTop    = virtualItems[0]?.start ?? 0;
+  const paddingBottom = totalVirtHeight - (virtualItems[virtualItems.length - 1]?.end ?? 0);
+
+  // ── Visible characteristic columns (in display order) ─────────────────────
+  const visibleCharCols = useMemo(
+    () =>
+      table
+        .getVisibleLeafColumns()
+        .filter((col) => !STATIC_META_COLS.includes(col.id) && col.id !== "__aksi__"),
+    // We intentionally depend on columnVisibility state so this updates
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [columnVisibility, characteristics, table]
+  );
+
+  // ── Save helper ────────────────────────────────────────────────────────────
+  const commitSave = useCallback(
+    async (record: ObservationRecord, char: Characteristic, value: number | null) => {
+      const key = cellKey(record.id, char.code);
+      setCellStatus((s) => ({ ...s, [key]: "saving" }));
+      try {
+        await onCellChange(record, char, value);
+        setCellStatus((s) => ({ ...s, [key]: "saved" }));
+        setTimeout(
+          () => setCellStatus((s) => { const n = { ...s }; delete n[key]; return n; }),
+          1800
+        );
+      } catch {
+        setCellStatus((s) => ({ ...s, [key]: "error" }));
+      }
+    },
+    [onCellChange]
+  );
+
+  // ── Enter edit mode ────────────────────────────────────────────────────────
+  const startEdit = useCallback(
+    (cell: ActiveCell, initialChar?: string) => {
+      if (!canEdit) return;
+      const row = tableRows[cell.rowIdx];
+      if (!row) return;
+      const col = visibleCharCols[cell.charColIdx];
+      if (!col) return;
+      const currentValue = row.original.record.values?.[col.id] ?? null;
+      setEditValue(initialChar ?? (currentValue !== null ? String(currentValue) : ""));
+      setEditingCell(cell);
+      // Input focuses via autoFocus on render
+    },
+    [canEdit, tableRows, visibleCharCols]
+  );
+
+  // ── Commit edit ────────────────────────────────────────────────────────────
+  const commitEdit = useCallback(() => {
+    if (!editingCell) return;
+    const row = tableRows[editingCell.rowIdx];
+    const col = visibleCharCols[editingCell.charColIdx];
+    if (!row || !col) { setEditingCell(null); return; }
+    const char = characteristics.find((c) => c.code === col.id);
+    if (!char) { setEditingCell(null); return; }
+    const trimmed = editValue.trim();
+    const num = trimmed === "" ? null : Number(trimmed.replace(",", "."));
+    const rounded = num !== null && !isNaN(num) ? Number(num.toFixed(char.decimal_places)) : null;
+    setEditingCell(null);
+    setEditValue("");
+    void commitSave(row.original.record, char, rounded);
+  }, [editingCell, tableRows, visibleCharCols, characteristics, editValue, commitSave]);
+
+  // ── Navigate helper ────────────────────────────────────────────────────────
+  const navigate = useCallback(
+    (dRow: number, dCol: number) => {
+      setActiveCell((prev) => {
+        const cur = prev ?? { rowIdx: 0, charColIdx: 0 };
+        const totalRows = tableRows.length;
+        const totalCols = visibleCharCols.length;
+        if (totalRows === 0 || totalCols === 0) return prev;
+
+        let r = cur.rowIdx    + dRow;
+        let c = cur.charColIdx + dCol;
+
+        // Wrap columns into next/prev row (Tab-like)
+        if (c < 0)         { r -= 1; c = totalCols - 1; }
+        if (c >= totalCols) { r += 1; c = 0; }
+
+        r = Math.max(0, Math.min(totalRows - 1, r));
+        c = Math.max(0, Math.min(totalCols - 1, c));
+
+        rowVirtualizer.scrollToIndex(r, { align: "auto" });
+        return { rowIdx: r, charColIdx: c };
+      });
+    },
+    [tableRows.length, visibleCharCols.length, rowVirtualizer]
+  );
+
+  // ── Keyboard handler (container level) ────────────────────────────────────
+  const handleKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      // ── Editing mode ──────────────────────────────────────────────────────
+      if (editingCell) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          setEditingCell(null);
+          setEditValue("");
+          return;
+        }
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commitEdit();
+          navigate(1, 0);
+          return;
+        }
+        if (e.key === "Tab") {
+          e.preventDefault();
+          commitEdit();
+          navigate(0, e.shiftKey ? -1 : 1);
+          return;
+        }
+        return; // Other keys pass through to <input>
+      }
+
+      // ── Navigation / selection mode ───────────────────────────────────────
+      if (!activeCell) return;
+
+      if (e.key === "ArrowUp")    { e.preventDefault(); navigate(-1, 0); }
+      if (e.key === "ArrowDown")  { e.preventDefault(); navigate(1, 0); }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); navigate(0, -1); }
+      if (e.key === "ArrowRight") { e.preventDefault(); navigate(0, 1); }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        navigate(0, e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        startEdit(activeCell);
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        const row = tableRows[activeCell.rowIdx];
+        const col = visibleCharCols[activeCell.charColIdx];
+        if (!row || !col || !canEdit) return;
+        const char = characteristics.find((c) => c.code === col.id);
+        if (char) void commitSave(row.original.record, char, null);
+        return;
+      }
+      if (e.key === "Home")    { e.preventDefault(); setActiveCell((p) => p ? { ...p, charColIdx: 0 } : p); }
+      if (e.key === "End")     {
+        e.preventDefault();
+        setActiveCell((p) =>
+          p ? { ...p, charColIdx: visibleCharCols.length - 1 } : p
+        );
+      }
+      if (e.key === "PageUp")  { e.preventDefault(); navigate(-10, 0); }
+      if (e.key === "PageDown"){ e.preventDefault(); navigate(10, 0); }
+
+      // Start edit when user types a digit / minus / period
+      if (canEdit && /^[\d.\-]$/.test(e.key)) {
+        e.preventDefault();
+        startEdit(activeCell, e.key);
+      }
+    },
+    [
+      activeCell, editingCell, navigate, commitEdit,
+      startEdit, tableRows, visibleCharCols, characteristics, commitSave, canEdit,
+    ]
+  );
+
+  // ── Paste handler (Ctrl+V from Excel) ─────────────────────────────────────
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLDivElement>) => {
+      if (!activeCell || !canEdit) return;
+      const text = e.clipboardData.getData("text/plain");
+      if (!text) return;
+      e.preventDefault();
+
+      const pastedRows = text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .trim()
+        .split("\n")
+        .map((r) => r.split("\t"));
+
+      const startRowIdx   = activeCell.rowIdx;
+      const startCharIdx  = activeCell.charColIdx;
+
+      pastedRows.forEach((pastedRow, rOffset) => {
+        const rowIdx = startRowIdx + rOffset;
+        if (rowIdx >= tableRows.length) return;
+        const record = tableRows[rowIdx].original.record;
+
+        pastedRow.forEach((rawVal, cOffset) => {
+          const charIdx = startCharIdx + cOffset;
+          if (charIdx >= visibleCharCols.length) return;
+          const col  = visibleCharCols[charIdx];
+          const char = characteristics.find((c) => c.code === col.id);
+          if (!char) return;
+
+          const cleaned = rawVal.trim().replace(",", ".");
+          const num = cleaned === "" ? null : Number(cleaned);
+          if (num !== null && isNaN(num)) return;
+          const rounded = num !== null ? Number(num.toFixed(char.decimal_places)) : null;
+
+          void commitSave(record, char, rounded);
+        });
+      });
+    },
+    [activeCell, canEdit, tableRows, visibleCharCols, characteristics, commitSave]
+  );
+
+  // ── Focus input when entering edit mode ───────────────────────────────────
+  useEffect(() => {
+    if (editingCell) {
+      // Input is rendered via the virtualised rows; slight delay ensures DOM is present
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [editingCell]);
+
+  // ── Click outside column menu to close ────────────────────────────────────
+  useEffect(() => {
+    if (!showColumnMenu) return;
+    const handler = (e: MouseEvent) => {
+      const menu = document.getElementById("obs-col-menu");
+      if (menu && !menu.contains(e.target as Node)) setShowColumnMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showColumnMenu]);
+
+  // ── Determine pinned/visible column groups for the column menu ─────────────
+  const allLeafCols = table.getAllLeafColumns();
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div
+      className="space-y-2 outline-none"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onPaste={handlePaste}
+    >
+      {/* ── Toolbar ── */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-[11px] text-gray-400 md:hidden">
+          Geser tabel ke kanan untuk melihat kolom lainnya
+        </p>
+
+        {canEdit && (
+          <p className="hidden md:block text-[11px] text-gray-400">
+            Klik sel → pilih · Klik 2× / Enter → edit · Tab / ↑↓←→ → navigasi · Ctrl+V → tempel dari Excel
+          </p>
         )}
+
+        {/* Column chooser */}
+        <div className="relative ml-auto">
+          <button
+            onClick={() => setShowColumnMenu((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+          >
+            <Columns3 className="w-3.5 h-3.5" />
+            Kolom
+          </button>
+
+          {showColumnMenu && (
+            <div
+              id="obs-col-menu"
+              className="absolute right-0 top-9 z-50 w-64 max-w-[82vw] max-h-80 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl p-2"
+            >
+              <div className="flex gap-1.5 mb-2 pb-2 border-b border-gray-100">
+                <button
+                  onClick={() => allLeafCols.forEach((c) => c.toggleVisibility(true))}
+                  className="flex-1 text-xs py-1 px-2 rounded bg-green-50 text-green-700 hover:bg-green-100 transition"
+                >
+                  Pilih Semua
+                </button>
+                <button
+                  onClick={() =>
+                    allLeafCols
+                      .filter((c) => !DEFAULT_PINNED.includes(c.id) && c.id !== "__aksi__")
+                      .forEach((c) => c.toggleVisibility(false))
+                  }
+                  className="flex-1 text-xs py-1 px-2 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 transition"
+                >
+                  Batal Semua
+                </button>
+              </div>
+
+              {allLeafCols.map((col) => {
+                const isPinned = col.getIsPinned();
+                const label    = COL_LABELS[col.id] ?? charLabelMap[col.id] ?? col.id;
+                return (
+                  <div
+                    key={col.id}
+                    className="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-gray-50"
+                  >
+                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer text-sm">
+                      <input
+                        type="checkbox"
+                        checked={col.getIsVisible()}
+                        onChange={col.getToggleVisibilityHandler()}
+                        className="accent-green-600"
+                      />
+                      <span className="truncate">{label}</span>
+                    </label>
+                    <button
+                      onClick={() => col.pin(isPinned ? false : "left")}
+                      title={isPinned ? "Lepas pin" : "Pin kolom"}
+                      className="flex-shrink-0 text-gray-400 hover:text-green-600 transition"
+                    >
+                      {isPinned
+                        ? <Pin    className="w-3.5 h-3.5 fill-current" />
+                        : <PinOff className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="overflow-auto rounded-lg border border-gray-200 max-h-[60vh] md:max-h-[70vh]" style={{isolation: "isolate"}}>
-        <table className="min-w-full border-separate border-spacing-0 text-sm" style={{position: "relative"}}>
-          <thead className="bg-gray-50">
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
+      {/* ── Scrollable table container ── */}
+      <div
+        ref={containerRef}
+        className="overflow-auto rounded-lg border border-gray-200"
+        style={{ maxHeight: "72vh", isolation: "isolate" }}
+      >
+        <table
+          className="min-w-full border-separate border-spacing-0 text-sm"
+          style={{ height: `${totalVirtHeight + 48}px`, position: "relative" }}
+        >
+          {/* ── Head ── */}
+          <thead className="bg-gray-50" style={{ position: "sticky", top: 0, zIndex: 40 }}>
+            {table.getHeaderGroups().map((hg) => (
+              <tr key={hg.id}>
+                {hg.headers.map((header) => (
                   <th
                     key={header.id}
                     style={getPinningStyles(header.column, true)}
-                    className={cn(
-                      "px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 sticky top-0 bg-gray-50",
-                      header.column.getIsPinned() && "bg-gray-50"
-                    )}
+                    className="px-2 py-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide border-b border-gray-200 bg-gray-50"
                   >
                     {header.isPlaceholder ? null : (
                       <div className="space-y-1">
                         <button
                           onClick={header.column.getToggleSortingHandler()}
-                          className={cn("flex items-center gap-1", header.column.getCanSort() && "cursor-pointer select-none")}
+                          className={cn(
+                            "flex items-center gap-1 w-full",
+                            header.column.getCanSort() && "cursor-pointer select-none"
+                          )}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {header.column.getCanSort() &&
                             ({
-                              asc: <ChevronUp className="w-3 h-3" />,
-                              desc: <ChevronDown className="w-3 h-3" />,
-                            }[header.column.getIsSorted() as string] ?? <ChevronsUpDown className="w-3 h-3 text-gray-300" />)}
+                              asc:  <ChevronUp   className="w-3 h-3 text-green-600" />,
+                              desc: <ChevronDown className="w-3 h-3 text-green-600" />,
+                            }[header.column.getIsSorted() as string] ??
+                              <ChevronsUpDown className="w-3 h-3 text-gray-300" />)}
                         </button>
                         {header.column.getCanFilter() && (
                           <input
                             value={(header.column.getFilterValue() as string) ?? ""}
                             onChange={(e) => header.column.setFilterValue(e.target.value)}
-                            placeholder="Filter..."
+                            placeholder="Filter…"
                             className="w-full px-1 py-0.5 text-[11px] font-normal normal-case border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-green-400"
+                            onClick={(e) => e.stopPropagation()}
                           />
                         )}
                       </div>
@@ -318,53 +698,209 @@ export function ObservationGrid({ records, characteristics, isLoading, onCellCha
               </tr>
             ))}
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-white">
+
+          {/* ── Body (virtualised) ── */}
+          <tbody className="bg-white">
             {isLoading ? (
               [...Array(8)].map((_, i) => (
-                <tr key={i}>
+                <tr key={i} style={{ height: ROW_HEIGHT }}>
                   {table.getAllLeafColumns().map((col) => (
-                    <td key={col.id} className="px-2 py-2">
+                    <td key={col.id} className="px-2 py-1">
                       <div className="h-4 bg-gray-100 rounded animate-pulse" />
                     </td>
                   ))}
                 </tr>
               ))
-            ) : table.getRowModel().rows.length === 0 ? (
+            ) : tableRows.length === 0 ? (
               <tr>
-                <td colSpan={table.getAllLeafColumns().length} className="px-4 py-10 text-center text-gray-400 text-sm">
+                <td
+                  colSpan={table.getAllLeafColumns().length}
+                  className="px-4 py-10 text-center text-gray-400 text-sm"
+                >
                   Tidak ada data pengamatan
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="group transition">
-                  {row.getVisibleCells().map((cell) => {
-                    const pinned = cell.column.getIsPinned();
-                    return (
-                      <td
-                        key={cell.id}
-                        style={{
-                          ...getPinningStyles(cell.column),
-                          // Non-pinned cells: explicit background so no bleed-through on hover
-                          ...(pinned ? {} : { backgroundColor: undefined }),
-                        }}
-                        className={cn(
-                          "px-2 py-1 whitespace-nowrap",
-                          pinned ? "" : "bg-white group-hover:bg-gray-50"
-                        )}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
+              <>
+                {/* Top spacer */}
+                {paddingTop > 0 && (
+                  <tr><td colSpan={table.getAllLeafColumns().length} style={{ height: paddingTop }} /></tr>
+                )}
+
+                {virtualItems.map((vItem) => {
+                  const row    = tableRows[vItem.index];
+                  const rowIdx = vItem.index;
+
+                  return (
+                    <tr
+                      key={row.id}
+                      style={{ height: ROW_HEIGHT }}
+                      className="group"
+                    >
+                      {row.getVisibleCells().map((cell) => {
+                        const isPinned   = cell.column.getIsPinned();
+                        const isCharCol  = !STATIC_META_COLS.includes(cell.column.id) && cell.column.id !== "__aksi__";
+                        const charColIdx = isCharCol
+                          ? visibleCharCols.findIndex((c) => c.id === cell.column.id)
+                          : -1;
+
+                        const isSelected = isCharCol &&
+                          activeCell?.rowIdx === rowIdx &&
+                          activeCell?.charColIdx === charColIdx;
+                        const isEditing  = isCharCol &&
+                          editingCell?.rowIdx === rowIdx &&
+                          editingCell?.charColIdx === charColIdx;
+
+                        const record  = row.original.record;
+                        const statusKey = isCharCol ? cellKey(record.id, cell.column.id) : "";
+                        const status    = isCharCol ? cellStatus[statusKey] : undefined;
+
+                        // Characteristic columns — custom render
+                        if (isCharCol && charColIdx >= 0) {
+                          const char  = characteristics.find((c) => c.code === cell.column.id);
+                          const value = record.values?.[cell.column.id] ?? null;
+
+                          return (
+                            <td
+                              key={cell.id}
+                              style={{
+                                ...getPinningStyles(cell.column),
+                                ...(isPinned ? {} : {
+                                  backgroundColor: isSelected || isEditing
+                                    ? undefined
+                                    : "rgb(255,255,255)",
+                                }),
+                              }}
+                              className={cn(
+                                "px-0 py-0 relative border-b border-gray-50",
+                                !isPinned && "group-hover:bg-gray-50/60",
+                              )}
+                            >
+                              {isEditing ? (
+                                // ── Edit mode ──────────────────────────────
+                                <input
+                                  ref={inputRef}
+                                  type="number"
+                                  step="any"
+                                  value={editValue}
+                                  autoFocus
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onBlur={commitEdit}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Escape") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setEditingCell(null);
+                                      setEditValue("");
+                                    }
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      commitEdit();
+                                      navigate(1, 0);
+                                    }
+                                    if (e.key === "Tab") {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      commitEdit();
+                                      navigate(0, e.shiftKey ? -1 : 1);
+                                    }
+                                  }}
+                                  className="w-full h-full px-1.5 text-right text-sm font-mono bg-blue-50 border-2 border-blue-400 rounded focus:outline-none"
+                                  style={{ minWidth: 64 }}
+                                />
+                              ) : (
+                                // ── View / selected mode ────────────────────
+                                <div
+                                  className={cn(
+                                    "w-full h-full flex items-center justify-end px-1.5 cursor-default select-none text-sm font-mono",
+                                    isSelected
+                                      ? "ring-2 ring-inset ring-blue-400 bg-blue-50/80"
+                                      : canEdit && "hover:bg-blue-50/30",
+                                    status === "error" && "bg-red-50",
+                                  )}
+                                  style={{ minHeight: ROW_HEIGHT }}
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      // Second click on already-selected → enter edit
+                                      startEdit({ rowIdx, charColIdx });
+                                    } else {
+                                      setActiveCell({ rowIdx, charColIdx });
+                                    }
+                                  }}
+                                  onDoubleClick={() => {
+                                    setActiveCell({ rowIdx, charColIdx });
+                                    startEdit({ rowIdx, charColIdx });
+                                  }}
+                                >
+                                  {/* Value */}
+                                  <span className={cn(
+                                    value === null ? "text-gray-300" : "text-gray-800"
+                                  )}>
+                                    {value !== null
+                                      ? char ? value.toFixed(char.decimal_places) : String(value)
+                                      : "—"}
+                                  </span>
+
+                                  {/* Status badge */}
+                                  {status === "saving" && (
+                                    <Loader2 className="ml-1 w-3 h-3 text-blue-400 animate-spin flex-shrink-0" />
+                                  )}
+                                  {status === "saved" && (
+                                    <Check className="ml-1 w-3 h-3 text-green-500 flex-shrink-0" />
+                                  )}
+                                  {status === "error" && (
+                                    <AlertCircle className="ml-1 w-3 h-3 text-red-500 flex-shrink-0" />
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        }
+
+                        // ── Static metadata columns & Aksi ──────────────────
+                        return (
+                          <td
+                            key={cell.id}
+                            style={{
+                              ...getPinningStyles(cell.column),
+                              ...(isPinned ? {} : { backgroundColor: "rgb(255,255,255)" }),
+                            }}
+                            className={cn(
+                              "px-2 py-1 whitespace-nowrap border-b border-gray-50 text-gray-600",
+                              !isPinned && "group-hover:bg-gray-50/60",
+                            )}
+                          >
+                            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+
+                {/* Bottom spacer */}
+                {paddingBottom > 0 && (
+                  <tr><td colSpan={table.getAllLeafColumns().length} style={{ height: paddingBottom }} /></tr>
+                )}
+              </>
             )}
           </tbody>
         </table>
       </div>
 
-      <p className="text-xs text-gray-400">{table.getFilteredRowModel().rows.length} dari {records.length} baris</p>
+      {/* ── Footer ── */}
+      <div className="flex items-center justify-between text-xs text-gray-400">
+        <span>
+          {table.getFilteredRowModel().rows.length} dari {records.length} baris
+        </span>
+        {activeCell && (
+          <span className="text-blue-500">
+            Plot {tableRows[activeCell.rowIdx]?.original.plot_no ?? "?"} ·{" "}
+            {visibleCharCols[activeCell.charColIdx]?.id ?? ""}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
