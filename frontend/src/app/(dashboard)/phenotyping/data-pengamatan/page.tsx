@@ -213,7 +213,8 @@ export default function DataPengamatanPage() {
             r.replication === row.replication;
 
       // Optimistic: update value in cache immediately
-      const colId = sampleNumber > 1 ? `${characteristic.code}__s${sampleNumber}` : characteristic.code;
+      // Multi-sample columns have IDs like "b%__s1" even for sample 1; single-sample uses plain code
+      const colId = numSamples > 1 ? `${characteristic.code}__s${sampleNumber}` : characteristic.code;
       queryClient.setQueryData(
         gridQueryKey,
         (old: { trial: unknown; rows: GridRow[] } | undefined) => {
@@ -266,7 +267,7 @@ export default function DataPengamatanPage() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queryClient, trialFilter, gridQueryKey.join(":")]
+    [queryClient, trialFilter, numSamples, gridQueryKey.join(":")]
   );
 
   const { data: deletedData } = useQuery({
