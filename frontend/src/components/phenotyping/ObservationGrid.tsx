@@ -676,18 +676,22 @@ export function ObservationGrid({
                   const colId = header.column.id;
                   const isMetaCol = STATIC_META_COLS.includes(colId) || colId === "__aksi__";
 
-                  // Skip placeholder cells for meta/aksi cols — covered by rowSpan on the first row
-                  if (header.isPlaceholder && isMetaCol) return null;
+                  // Meta cols must appear ONLY in the first header row (depth=0), spanning all rows
+                  // via rowSpan. TanStack may mark them as placeholders at depth=0 in multi-level
+                  // mode (real headers land at depth=1), so we use depth instead of isPlaceholder.
+                  if (hg.depth > 0 && isMetaCol) return null;
+
+                  // Skip placeholder cells for non-meta cols (e.g. group column stubs)
+                  if (header.isPlaceholder && !isMetaCol) return null;
 
                   const isGroupParent = header.column.columns.length > 0;
-                  // A group-parent header spans its children → its right edge IS a char boundary
                   const isBoundary = isGroupParent || isCharGroupBoundary(colId, numSamples);
                   const pinnedLeafCols = table.getLeftLeafColumns();
                   const lastPinnedId = pinnedLeafCols[pinnedLeafCols.length - 1]?.id;
                   const isLastPinned = !!header.column.getIsPinned() && colId === lastPinnedId;
 
-                  // Non-placeholder meta cols in the first row span all header rows
-                  const rowSpan = (!header.isPlaceholder && isMetaCol && hgCount > 1) ? hgCount : undefined;
+                  // Meta cols at depth=0 always span all header rows
+                  const rowSpan = (isMetaCol && hgCount > 1) ? hgCount : undefined;
 
                   return (
                   <th
@@ -700,18 +704,16 @@ export function ObservationGrid({
                     }}
                     className={cn(
                       "px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50",
-                      header.isPlaceholder
-                        ? "py-0"
-                        : cn(
-                            "py-2",
-                            // row-spanning meta cols and last header row get thick bottom border
-                            (isLastHg || rowSpan) ? "border-b-2 border-b-black" : "border-b border-b-gray-300",
-                            // right border: thick black on char group boundary, thin on others
-                            isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-300"
-                          )
+                      "py-2",
+                      // row-spanning meta cols and last header row get thick bottom border
+                      (isLastHg || rowSpan) ? "border-b-2 border-b-black" : "border-b border-b-gray-300",
+                      // right border: thick black on char group boundary, thin on others
+                      isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-300"
                     )}
                   >
-                    {!header.isPlaceholder && (
+                    {/* Render content for real headers; also force-render meta cols even if
+                        TanStack marks them as placeholders at depth=0 */}
+                    {(!header.isPlaceholder || isMetaCol) && (
                       <div className="space-y-1">
                         <button
                           onClick={header.column.getToggleSortingHandler()}
