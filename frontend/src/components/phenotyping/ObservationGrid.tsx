@@ -668,17 +668,27 @@ export function ObservationGrid({
               return (
               <tr key={hg.id}>
                 {hg.headers.map((header) => {
-                  const isGroupParent = header.column.columns.length > 0;
                   const colId = header.column.id;
+                  const isMetaCol = STATIC_META_COLS.includes(colId) || colId === "__aksi__";
+
+                  // Skip placeholder cells for meta/aksi cols — covered by rowSpan on the first row
+                  if (header.isPlaceholder && isMetaCol) return null;
+
+                  const isGroupParent = header.column.columns.length > 0;
                   // A group-parent header spans its children → its right edge IS a char boundary
                   const isBoundary = isGroupParent || isCharGroupBoundary(colId, numSamples);
                   const pinnedLeafCols = table.getLeftLeafColumns();
                   const lastPinnedId = pinnedLeafCols[pinnedLeafCols.length - 1]?.id;
                   const isLastPinned = !!header.column.getIsPinned() && colId === lastPinnedId;
+
+                  // Non-placeholder meta cols in the first row span all header rows
+                  const rowSpan = (!header.isPlaceholder && isMetaCol && hgCount > 1) ? hgCount : undefined;
+
                   return (
                   <th
                     key={header.id}
                     colSpan={header.colSpan}
+                    rowSpan={rowSpan}
                     style={getPinningStyles(header.column, true, isLastPinned)}
                     className={cn(
                       "px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50",
@@ -686,8 +696,8 @@ export function ObservationGrid({
                         ? "py-0"
                         : cn(
                             "py-2",
-                            // bottom border: thick black on the last header row, lighter on intermediate
-                            isLastHg ? "border-b-2 border-b-black" : "border-b border-b-gray-300",
+                            // row-spanning meta cols and last header row get thick bottom border
+                            (isLastHg || rowSpan) ? "border-b-2 border-b-black" : "border-b border-b-gray-300",
                             // right border: thick black on char group boundary, thin on others
                             isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-300"
                           )
@@ -816,19 +826,17 @@ export function ObservationGrid({
                                     if (e.key === "Enter")  { e.preventDefault(); e.stopPropagation(); commitEdit(); navigate(1, 0); }
                                     if (e.key === "Tab")    { e.preventDefault(); e.stopPropagation(); commitEdit(); navigate(0, e.shiftKey ? -1 : 1); }
                                   }}
-                                  className="w-full h-full px-1.5 text-right text-sm font-mono bg-blue-50 border-2 border-blue-400 rounded focus:outline-none"
-                                  style={{ minWidth: 64 }}
+                                  className="absolute inset-0 px-1.5 text-right text-sm font-mono bg-blue-50 border-2 border-blue-400 rounded focus:outline-none"
                                 />
                               ) : (
                                 <div
                                   className={cn(
-                                    "w-full h-full flex items-center justify-end px-1.5 cursor-default select-none text-sm font-mono",
+                                    "absolute inset-0 flex items-center justify-end px-1.5 cursor-default select-none text-sm font-mono",
                                     isSelected
                                       ? "ring-2 ring-inset ring-blue-400 bg-blue-50/80"
                                       : canEdit && "hover:bg-blue-50/30",
                                     status === "error" && "bg-red-50",
                                   )}
-                                  style={{ minHeight: ROW_HEIGHT }}
                                   onClick={() => {
                                     if (isSelected) startEdit({ rowIdx, charColIdx });
                                     else setActiveCell({ rowIdx, charColIdx });
