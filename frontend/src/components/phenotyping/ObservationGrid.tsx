@@ -117,6 +117,7 @@ type CellSaveStatus = "saving" | "saved" | "error";
 interface ActiveCell {
   rowIdx:     number;
   charColIdx: number;
+  colId?:     string;  // direct column ID — bypasses index lookup in startEdit/commitEdit
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -430,7 +431,9 @@ export function ObservationGrid({
       if (!canEdit) return;
       const row = tableRows[cell.rowIdx];
       if (!row) return;
-      const col = visibleCharCols[cell.charColIdx];
+      // Prefer direct colId lookup; fall back to index (e.g. for keyboard Enter)
+      const col = (cell.colId ? visibleCharCols.find((c) => c.id === cell.colId) : undefined)
+        ?? visibleCharCols[cell.charColIdx];
       if (!col) return;
       const current = row.original.row.values?.[col.id] ?? null;
       setEditValue(initialChar ?? (current !== null ? String(current) : ""));
@@ -442,7 +445,9 @@ export function ObservationGrid({
   const commitEdit = useCallback(() => {
     if (!editingCell) return;
     const row = tableRows[editingCell.rowIdx];
-    const col = visibleCharCols[editingCell.charColIdx];
+    // Same preference: direct colId, then index
+    const col = (editingCell.colId ? visibleCharCols.find((c) => c.id === editingCell.colId) : undefined)
+      ?? visibleCharCols[editingCell.charColIdx];
     if (!row || !col) { setEditingCell(null); return; }
     const { charCode, sampleNumber } = parseColId(col.id);
     const char = characteristics.find((c) => c.code === charCode);
@@ -802,15 +807,27 @@ export function ObservationGrid({
                           const value = gridRow.values?.[cell.column.id] ?? null;
                           const isBoundary = isCharGroupBoundary(cell.column.id, numSamples);
 
+                          const cellId = cell.column.id;
                           return (
                             <td
                               key={cell.id}
                               style={getPinningStyles(cell.column, false, isLastPinned)}
                               className={cn(
-                                "px-0 py-0 relative border-b border-b-gray-700",
+                                "px-0 py-0 relative cursor-default border-b border-b-gray-700",
                                 isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-700",
                                 !isPinned && !isSelected && !isEditing && "group-hover:bg-gray-50/60",
                               )}
+                              onClick={() => {
+                                if (isEditing) return;
+                                if (isSelected) startEdit({ rowIdx, charColIdx, colId: cellId });
+                                else setActiveCell({ rowIdx, charColIdx, colId: cellId });
+                              }}
+                              onDoubleClick={() => {
+                                if (!isEditing) {
+                                  setActiveCell({ rowIdx, charColIdx, colId: cellId });
+                                  startEdit({ rowIdx, charColIdx, colId: cellId });
+                                }
+                              }}
                             >
                               {isEditing ? (
                                 <input
@@ -831,17 +848,12 @@ export function ObservationGrid({
                               ) : (
                                 <div
                                   className={cn(
-                                    "absolute inset-0 flex items-center justify-end px-1.5 cursor-default select-none text-sm font-mono",
+                                    "absolute inset-0 flex items-center justify-end px-1.5 select-none text-sm font-mono",
                                     isSelected
                                       ? "ring-2 ring-inset ring-blue-400 bg-blue-50/80"
                                       : canEdit && "hover:bg-blue-50/30",
                                     status === "error" && "bg-red-50",
                                   )}
-                                  onClick={() => {
-                                    if (isSelected) startEdit({ rowIdx, charColIdx });
-                                    else setActiveCell({ rowIdx, charColIdx });
-                                  }}
-                                  onDoubleClick={() => { setActiveCell({ rowIdx, charColIdx }); startEdit({ rowIdx, charColIdx }); }}
                                 >
                                   <span className={value === null ? "text-gray-300" : "text-gray-800"}>
                                     {value !== null
