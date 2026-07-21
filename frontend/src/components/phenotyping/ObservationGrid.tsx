@@ -52,8 +52,8 @@ import type { Characteristic, GridRow } from "@/types";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const LS_VISIBILITY_KEY = "obs-grid-col-visibility-v3";
-const LS_PINNING_KEY    = "obs-grid-col-pinning-v3";
+const LS_VISIBILITY_KEY = "obs-grid-col-visibility-v4";
+const LS_PINNING_KEY    = "obs-grid-col-pinning-v4";
 
 const DEFAULT_PINNED: string[] = [
   "plot_no",
@@ -694,7 +694,10 @@ export function ObservationGrid({
                     key={header.id}
                     colSpan={header.colSpan}
                     rowSpan={rowSpan}
-                    style={getPinningStyles(header.column, true, isLastPinned)}
+                    style={{
+                      ...getPinningStyles(header.column, true, isLastPinned),
+                      ...(!header.column.getIsPinned() && { width: header.getSize(), minWidth: header.getSize() }),
+                    }}
                     className={cn(
                       "px-2 text-center text-xs font-semibold text-gray-600 uppercase tracking-wide bg-gray-50",
                       header.isPlaceholder
@@ -789,8 +792,13 @@ export function ObservationGrid({
                           ? visibleCharCols.findIndex((c) => c.id === cell.column.id)
                           : -1;
 
-                        const isSelected = isCharCol && activeCell?.rowIdx === rowIdx && activeCell?.charColIdx === charColIdx;
-                        const isEditing  = isCharCol && editingCell?.rowIdx === rowIdx && editingCell?.charColIdx === charColIdx;
+                        // Prefer colId match (set by click); fall back to charColIdx (set by keyboard nav)
+                        const isSelected = isCharCol && activeCell?.rowIdx === rowIdx && (
+                          activeCell.colId != null ? activeCell.colId === cell.column.id : activeCell.charColIdx === charColIdx && charColIdx >= 0
+                        );
+                        const isEditing  = isCharCol && editingCell?.rowIdx === rowIdx && (
+                          editingCell.colId != null ? editingCell.colId === cell.column.id : editingCell.charColIdx === charColIdx && charColIdx >= 0
+                        );
 
                         const statusKey = isCharCol ? cellKey(gridRow, cell.column.id) : "";
                         const status    = isCharCol ? cellStatus[statusKey] : undefined;
@@ -801,7 +809,7 @@ export function ObservationGrid({
                         const isLastPinned = isPinned && cell.column.id === lastPinnedId;
 
                         // ── Characteristic cell ──────────────────────────────
-                        if (isCharCol && charColIdx >= 0) {
+                        if (isCharCol) {
                           const { charCode } = parseColId(cell.column.id);
                           const char  = characteristics.find((c) => c.code === charCode);
                           const value = gridRow.values?.[cell.column.id] ?? null;
@@ -811,7 +819,10 @@ export function ObservationGrid({
                           return (
                             <td
                               key={cell.id}
-                              style={getPinningStyles(cell.column, false, isLastPinned)}
+                              style={{
+                                ...getPinningStyles(cell.column, false, isLastPinned),
+                                ...(!isPinned && { width: cell.column.getSize(), minWidth: cell.column.getSize() }),
+                              }}
                               className={cn(
                                 "px-0 py-0 relative cursor-default border-b border-b-gray-700",
                                 isBoundary ? "border-r-2 border-r-black" : "border-r border-r-gray-700",
