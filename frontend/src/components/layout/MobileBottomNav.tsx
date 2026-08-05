@@ -24,6 +24,7 @@ const ALL_MORE_ITEMS: MoreItem[] = [
   { name: "Pengguna",     href: "/users",                     emoji: "👥", roles: ["super_admin"] },
   { name: "Audit",        href: "/audit",                     emoji: "📊", roles: ["super_admin"] },
   { name: "Data Rata²",   href: "/phenotyping/data-rata-rata", emoji: "📈", roles: ["super_admin","researcher","principal_researcher"] },
+  { name: "Seed Counter", href: "/seed-counter",              emoji: "🌾" },
   { name: "Pengaturan",   href: "/settings",                  emoji: "⚙️" },
 ];
 

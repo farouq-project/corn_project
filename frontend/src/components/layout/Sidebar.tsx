@@ -21,6 +21,7 @@ import {
   Award,
   Microscope,
   ClipboardList,
+  ScanSearch,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -62,6 +63,7 @@ const navigation: { label: string; items: NavItem[] }[] = [
       { name: "Penyakit", href: "/disease", icon: Bug },
       { name: "Jadwal Pengamatan", href: "/schedules", icon: CalendarClock },
       { name: "Log Aktivitas", href: "/pengamatan/logbook", icon: ClipboardList },
+      { name: "Seed Counter", href: "/seed-counter", icon: ScanSearch },
       {
         name: "Storage Monitor", href: "/pengamatan/storage-monitor", icon: Archive,
         allowedRoles: ["super_admin", "researcher", "colaborator", "principal_researcher", "storage_officer"],
