@@ -294,42 +294,46 @@ export default function SeedCounter() {
 
       {/* ── Left: image / canvas ─────────────────────────────────────────── */}
       <div className="flex-1 min-w-0 space-y-3">
-        {hasImage ? (
-          <>
-            <div className="relative rounded-xl overflow-hidden bg-gray-900 shadow-sm border border-gray-200">
-              <canvas
-                ref={canvasRef}
-                onClick={handleCanvasClick}
-                className={cn(
-                  "block max-w-full",
-                  refColors.length < MAX_COLOURS ? "cursor-crosshair" : "cursor-default"
-                )}
-              />
-              {refColors.length === 0 && (
-                <div className="absolute inset-0 flex items-end justify-center pb-4 pointer-events-none">
-                  <p className="bg-black/60 text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm">
-                    Klik gambar untuk mengambil sampel warna benih
-                  </p>
-                </div>
-              )}
-            </div>
-            {(result?.points.length ?? 0) > 0 && (
-              <div className="flex flex-wrap gap-4 text-xs text-gray-500 px-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
-                  Deteksi langsung
-                </span>
-                {hasSplitPoints && (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />
-                    Estimasi (benih tergabung)
-                  </span>
-                )}
-              </div>
+        {/* Canvas is always mounted so canvasRef.current is never null inside loadFile.
+            It is visually hidden (not display:none) until an image is loaded. */}
+        <div className={cn(
+          "relative rounded-xl overflow-hidden bg-gray-900 shadow-sm border border-gray-200",
+          !hasImage && "hidden"
+        )}>
+          <canvas
+            ref={canvasRef}
+            onClick={handleCanvasClick}
+            className={cn(
+              "block max-w-full",
+              refColors.length < MAX_COLOURS ? "cursor-crosshair" : "cursor-default"
             )}
-          </>
-        ) : (
-          /* Empty state */
+          />
+          {hasImage && refColors.length === 0 && (
+            <div className="absolute inset-0 flex items-end justify-center pb-4 pointer-events-none">
+              <p className="bg-black/60 text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm">
+                Klik gambar untuk mengambil sampel warna benih
+              </p>
+            </div>
+          )}
+        </div>
+
+        {hasImage && (result?.points.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-4 text-xs text-gray-500 px-1">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-full bg-green-500" />
+              Deteksi langsung
+            </span>
+            {hasSplitPoints && (
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-full bg-orange-500" />
+                Estimasi (benih tergabung)
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Empty state — shown only before any photo is loaded */}
+        {!hasImage && (
           <div className="flex flex-col items-center justify-center gap-5 rounded-xl border-2 border-dashed border-gray-200 bg-white p-16 sm:p-20">
             <div className="w-14 h-14 rounded-2xl bg-green-50 flex items-center justify-center">
               <Camera className="w-7 h-7 text-green-500" />
