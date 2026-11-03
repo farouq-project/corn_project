@@ -11,7 +11,7 @@ class FieldActivity extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'activity_code', 'user_id', 'trial_id', 'location_id', 'genotype_id',
+        'activity_code', 'user_id', 'trial_id', 'location_id', 'environment_id', 'genotype_id',
         'activity_type', 'activity_title', 'description', 'activity_date',
         'start_time', 'end_time', 'latitude', 'longitude',
         'photos', 'voice_note_path', 'materials_used', 'weather_conditions',
@@ -39,6 +39,11 @@ class FieldActivity extends Model
     public function location()
     {
         return $this->belongsTo(Location::class);
+    }
+
+    public function environment()
+    {
+        return $this->belongsTo(Environment::class);
     }
 
     public function genotype()

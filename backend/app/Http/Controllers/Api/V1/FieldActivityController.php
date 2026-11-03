@@ -16,10 +16,11 @@ class FieldActivityController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = FieldActivity::with(['user', 'trial', 'location', 'genotype'])
+        $query = FieldActivity::with(['user', 'trial', 'location', 'environment', 'genotype'])
             ->when($request->search, fn($q) => $q->where('activity_title', 'ilike', "%{$request->search}%"))
             ->when($request->trial_id, fn($q) => $q->where('trial_id', $request->trial_id))
             ->when($request->location_id, fn($q) => $q->where('location_id', $request->location_id))
+            ->when($request->environment_id, fn($q) => $q->where('environment_id', $request->environment_id))
             ->when($request->activity_type, fn($q) => $q->where('activity_type', $request->activity_type))
             ->when($request->user_id, fn($q) => $q->where('user_id', $request->user_id))
             ->when($request->from_date, fn($q) => $q->where('activity_date', '>=', $request->from_date))
@@ -37,6 +38,7 @@ class FieldActivityController extends Controller
         $data = $request->validate([
             'trial_id' => ['nullable', 'exists:trials,id'],
             'location_id' => ['nullable', 'exists:locations,id'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
             'genotype_id' => ['nullable', 'exists:genotypes,id'],
             'activity_type' => ['required', 'in:planting,pollination,fertilizer_application,irrigation,pesticide_application,harvesting,drone_flight,disease_observation,sampling,soil_preparation,thinning,weeding,monitoring,logbook,other'],
             'photo_urls' => ['nullable', 'array'],
@@ -71,18 +73,21 @@ class FieldActivityController extends Controller
         $activity = FieldActivity::create($data);
         AuditService::logCreated($activity);
 
-        return response()->json($activity->load(['user', 'trial', 'location']), 201);
+        return response()->json($activity->load(['user', 'trial', 'location', 'environment']), 201);
     }
 
     public function show(FieldActivity $activity): JsonResponse
     {
-        return response()->json($activity->load(['user', 'trial', 'location', 'genotype', 'approver']));
+        return response()->json($activity->load(['user', 'trial', 'location', 'environment', 'genotype', 'approver']));
     }
 
     public function update(Request $request, FieldActivity $activity): JsonResponse
     {
         $data = $request->validate([
             'activity_title' => ['sometimes', 'string'],
+            'environment_id' => ['nullable', 'exists:environments,id'],
+            'photo_urls' => ['sometimes', 'array'],
+            'photo_urls.*' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'activity_date' => ['sometimes', 'date'],
             'start_time' => ['nullable', 'date_format:H:i'],
@@ -94,11 +99,16 @@ class FieldActivityController extends Controller
             'notes' => ['nullable', 'string'],
         ]);
 
+        if (array_key_exists('photo_urls', $data)) {
+            $data['photos'] = $data['photo_urls'];
+            unset($data['photo_urls']);
+        }
+
         $original = $activity->getAttributes();
         $activity->update($data);
         AuditService::logUpdated($activity, $original);
 
-        return response()->json($activity);
+        return response()->json($activity->load(['user', 'trial', 'location', 'environment']));
     }
 
     public function destroy(FieldActivity $activity): JsonResponse

@@ -17,10 +17,14 @@ interface LogEntry {
   activity_date: string;
   photos: string[];
   user?: { name: string };
-  location?: { field_name: string; id: number };
+  environment?: { id: number; environment_code: string; name?: string | null } | null;
 }
 
-type SortKey = "activity_date" | "activity_title" | "location" | "user_name";
+interface EnvOption { id: number; environment_code: string; name?: string | null }
+
+const envLabel = (e?: EnvOption | null) => e ? (e.name || e.environment_code) : "";
+
+type SortKey = "activity_date" | "activity_title" | "environment" | "user_name";
 type SortDir = "asc" | "desc";
 interface ColFilters { judul: string; lokasi: string; nama: string; tanggal: string; }
 
@@ -33,7 +37,7 @@ export default function LogbookPage() {
   const [editingEntry, setEditingEntry] = useState<LogEntry | null>(null);
   const [title, setTitle] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [locationId, setLocationId] = useState<number | null>(null);
+  const [environmentId, setEnvironmentId] = useState<number | null>(null);
   const [details, setDetails] = useState<string[]>([""]);
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -53,12 +57,15 @@ export default function LogbookPage() {
     }).then(r => r.data),
   });
 
-  const { data: locData } = useQuery({
-    queryKey: ["locations-list"],
-    queryFn: () => api.get<{ data: Array<{ id: number; field_name: string; field_code: string }> }>("/v1/locations?per_page=200").then(r => r.data),
-    staleTime: 60000,
+  // Same source as Master Data → Lokasi; its mutations invalidate ["environments"], keeping this list in sync
+  const { data: envData } = useQuery({
+    queryKey: ["environments", "all"],
+    queryFn: () => api.get<EnvOption[]>("/v1/environments", { params: { all: true } }).then(r => r.data),
   });
-  const locations = locData?.data ?? [];
+  const environments = useMemo(
+    () => [...(envData ?? [])].sort((a, b) => envLabel(a).localeCompare(envLabel(b))),
+    [envData],
+  );
   const rawEntries: LogEntry[] = data?.data ?? [];
 
   const entries = useMemo(() => {
@@ -68,7 +75,7 @@ export default function LogbookPage() {
       list = list.filter(e =>
         e.activity_title.toLowerCase().includes(q) ||
         e.description?.toLowerCase().includes(q) ||
-        e.location?.field_name?.toLowerCase().includes(q) ||
+        envLabel(e.environment).toLowerCase().includes(q) ||
         e.user?.name?.toLowerCase().includes(q)
       );
     }
@@ -78,7 +85,7 @@ export default function LogbookPage() {
     }
     if (colFilters.lokasi) {
       const q = colFilters.lokasi.toLowerCase();
-      list = list.filter(e => (e.location?.field_name ?? "").toLowerCase().includes(q));
+      list = list.filter(e => envLabel(e.environment).toLowerCase().includes(q));
     }
     if (colFilters.nama) {
       const q = colFilters.nama.toLowerCase();
@@ -92,7 +99,7 @@ export default function LogbookPage() {
       if (sortKey === "activity_date") { va = a.activity_date; vb = b.activity_date; }
       else if (sortKey === "activity_title") { va = a.activity_title; vb = b.activity_title; }
       else if (sortKey === "user_name") { va = a.user?.name ?? ""; vb = b.user?.name ?? ""; }
-      else { va = a.location?.field_name ?? ""; vb = b.location?.field_name ?? ""; }
+      else { va = envLabel(a.environment); vb = envLabel(b.environment); }
       return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
     });
     return list;
@@ -140,7 +147,7 @@ export default function LogbookPage() {
     setEditingEntry(null);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
-    setLocationId(null);
+    setEnvironmentId(null);
     setDetails([""]);
     setPhotoUrls([]);
     setIsModalOpen(true);
@@ -150,7 +157,7 @@ export default function LogbookPage() {
     setEditingEntry(entry);
     setTitle(entry.activity_title);
     setDate(entry.activity_date);
-    setLocationId(entry.location?.id ?? null);
+    setEnvironmentId(entry.environment?.id ?? null);
     setDetails(entry.description?.split("\n").filter(Boolean) ?? [""]);
     setPhotoUrls(entry.photos ?? []);
     setIsModalOpen(true);
@@ -161,7 +168,7 @@ export default function LogbookPage() {
     setEditingEntry(null);
     setTitle("");
     setDate(new Date().toISOString().slice(0, 10));
-    setLocationId(null);
+    setEnvironmentId(null);
     setDetails([""]);
     setPhotoUrls([]);
   };
@@ -172,7 +179,7 @@ export default function LogbookPage() {
       e.activity_code,
       e.activity_title,
       e.description?.replace(/\n/g, "; ") ?? "",
-      e.location?.field_name ?? "",
+      envLabel(e.environment),
       e.user?.name ?? "",
       e.activity_date,
     ]);
@@ -193,7 +200,7 @@ export default function LogbookPage() {
     if (!filledDetails.length) { toast.error("Tambahkan minimal satu detail aktivitas"); return; }
     const payload = {
       activity_type: "logbook",
-      location_id: locationId || undefined,
+      environment_id: environmentId,
       activity_title: title.trim() || `Log #${rawEntries.length + 1}`,
       description: filledDetails.join("\n"),
       activity_date: date,
@@ -278,8 +285,8 @@ export default function LogbookPage() {
                     <span className="flex items-center gap-1">Judul <SortIcon col="activity_title" /></span>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Detail</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("location")}>
-                    <span className="flex items-center gap-1">Lokasi <SortIcon col="location" /></span>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("environment")}>
+                    <span className="flex items-center gap-1">Lokasi <SortIcon col="environment" /></span>
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 cursor-pointer hover:text-gray-700" onClick={() => toggleSort("user_name")}>
                     <span className="flex items-center gap-1">Nama <SortIcon col="user_name" /></span>
@@ -343,7 +350,7 @@ export default function LogbookPage() {
                         </ul>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs text-gray-500">{entry.location?.field_name ?? "—"}</span>
+                        <span className="text-xs text-gray-500">{envLabel(entry.environment) || "—"}</span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="text-xs text-gray-500">{entry.user?.name ?? "—"}</span>
@@ -397,10 +404,10 @@ export default function LogbookPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Lokasi</label>
-                  <select value={locationId ?? ""} onChange={e => setLocationId(e.target.value ? Number(e.target.value) : null)} className={inputCls}>
+                  <select value={environmentId ?? ""} onChange={e => setEnvironmentId(e.target.value ? Number(e.target.value) : null)} className={inputCls}>
                     <option value="">— Pilih Lokasi —</option>
-                    {locations.map(l => (
-                      <option key={l.id} value={l.id}>{l.field_name} ({l.field_code})</option>
+                    {environments.map(env => (
+                      <option key={env.id} value={env.id}>{env.name ? `${env.name} (${env.environment_code})` : env.environment_code}</option>
                     ))}
                   </select>
                 </div>

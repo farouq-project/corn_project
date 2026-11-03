@@ -19,7 +19,7 @@ class EnvironmentController extends Controller
             ->when($request->location_id, fn($q) => $q->where('location_id', $request->location_id));
 
         if ($request->boolean('all')) {
-            return response()->json($query->get(['id', 'environment_code', 'location_id', 'season_id'])->map(fn($e) => [
+            return response()->json($query->get(['id', 'environment_code', 'name', 'location_id', 'season_id'])->map(fn($e) => [
                 'id' => $e->id,
                 'environment_code' => $e->environment_code,
                 'name' => $e->name,
